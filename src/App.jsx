@@ -66,6 +66,42 @@ const FANG_START_CHANCE = 30; // %
 const FANG_STEP = 15; // % pro Fehlversuch
 const FANG_MAX_CHANCE = 95; // Deckel, damit nie 100% garantiert sind
 
+/* --------- Spielstand-Speicherung (localStorage) ---------
+   Läuft nur in einer echten Browser-Umgebung (z. B. nach dem Deploy).
+   In Claudes Artefakt-Vorschau ist localStorage blockiert – deshalb
+   ist alles in try/catch gekapselt und bricht dort einfach lautlos ab,
+   ohne das Spiel zu stören. */
+const SAVE_KEY = "pokeZahlenAbenteuer_save_v1";
+
+function loadSavedGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveGame(state) {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  } catch {
+    // z. B. localStorage nicht verfügbar (Artefakt-Vorschau) oder Speicher voll –
+    // Spiel läuft trotzdem weiter, nur ohne Persistenz.
+  }
+}
+
+function clearSavedGame() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // ignorieren
+  }
+}
+
 /* ======================================================================
    HILFSFUNKTIONEN
    ====================================================================== */
@@ -318,17 +354,22 @@ export default function PokemonZahlenAbenteuer() {
   }, []);
 
 
-  const [activeRegionIdx, setActiveRegionIdx] = useState(0);
-  const [unlockedCount, setUnlockedCount] = useState(1);
-  const [regionStreaks, setRegionStreaks] = useState(() => REGIONS.map(() => 0));
-  const [caughtDex, setCaughtDex] = useState(() => new Set());
+  /* --------- Spielstand: laden & speichern (localStorage) --------- */
+  const savedGame = useState(() => loadSavedGame())[0];
 
-  const [score, setScore] = useState(0);
-  const [fangChance, setFangChance] = useState(FANG_START_CHANCE);
+  const [activeRegionIdx, setActiveRegionIdx] = useState(() => savedGame?.activeRegionIdx ?? 0);
+  const [unlockedCount, setUnlockedCount] = useState(() => savedGame?.unlockedCount ?? 1);
+  const [regionStreaks, setRegionStreaks] = useState(
+    () => savedGame?.regionStreaks ?? REGIONS.map(() => 0)
+  );
+  const [caughtDex, setCaughtDex] = useState(() => new Set(savedGame?.caughtDex ?? []));
+
+  const [score, setScore] = useState(() => savedGame?.score ?? 0);
+  const [fangChance, setFangChance] = useState(() => savedGame?.fangChance ?? FANG_START_CHANCE);
 
   const region = REGIONS[activeRegionIdx];
-  const [question, setQuestion] = useState(() => genQuestion(REGIONS[0]));
-  const [options, setOptions] = useState(() => genOptions(question.answer, REGIONS[0].maxRange));
+  const [question, setQuestion] = useState(() => genQuestion(region));
+  const [options, setOptions] = useState(() => genOptions(question.answer, region.maxRange));
 
   const [phase, setPhase] = useState("question"); // question | feedback | encounter | result
   const [feedback, setFeedback] = useState(null);
@@ -336,12 +377,27 @@ export default function PokemonZahlenAbenteuer() {
   const [catchResult, setCatchResult] = useState(null); // "caught" | "fled"
   const [locked, setLocked] = useState(false);
 
-  const [totalAnswered, setTotalAnswered] = useState(0);
-  const [totalCorrect, setTotalCorrect] = useState(0);
+  const [totalAnswered, setTotalAnswered] = useState(() => savedGame?.totalAnswered ?? 0);
+  const [totalCorrect, setTotalCorrect] = useState(() => savedGame?.totalCorrect ?? 0);
   const [regionUpMsg, setRegionUpMsg] = useState(null);
   const [showMap, setShowMap] = useState(false);
   const [showDex, setShowDex] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+
+  // Bei jeder relevanten Änderung den Spielstand sichern.
+  useEffect(() => {
+    saveGame({
+      activeRegionIdx,
+      unlockedCount,
+      regionStreaks,
+      caughtDex: Array.from(caughtDex),
+      score,
+      fangChance,
+      totalAnswered,
+      totalCorrect,
+    });
+  }, [activeRegionIdx, unlockedCount, regionStreaks, caughtDex, score, fangChance, totalAnswered, totalCorrect]);
+
 
   const totalCaught = caughtDex.size;
 
@@ -440,6 +496,7 @@ export default function PokemonZahlenAbenteuer() {
   }
 
   function confirmRestart() {
+    clearSavedGame();
     setActiveRegionIdx(0);
     setUnlockedCount(1);
     setRegionStreaks(REGIONS.map(() => 0));
