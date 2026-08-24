@@ -660,7 +660,7 @@ export default function PokemonZahlenAbenteuer() {
                 <PokemonSprite dex={encounterDex} size={100} silhouette />
               </div>
               <div className="text-sm font-bold" style={{ color: "#555" }}>
-                Fangversuch läuft … ({fangChance}% Chance)
+                Fangversuch läuft …
               </div>
             </div>
           )}
@@ -691,7 +691,7 @@ export default function PokemonZahlenAbenteuer() {
                     💨 Entkommen!
                   </div>
                   <div className="text-lg font-bold" style={{ color: "#1a1a1a" }}>
-                    {pokemonName(encounterDex)} ist geflohen. Nächster Versuch: {fangChance}% Chance.
+                    {pokemonName(encounterDex)} ist geflohen. Nächstes Mal stehen die Chancen besser!
                   </div>
                 </>
               )}
