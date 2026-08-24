@@ -420,6 +420,11 @@ export default function PokemonZahlenAbenteuer() {
     setShowMap(false);
   }
 
+  function goToNewRegion(idx) {
+    switchRegion(idx);
+    setRegionUpMsg(null);
+  }
+
   function handleAnswer(opt) {
     if (locked) return;
     setLocked(true);
@@ -457,8 +462,7 @@ export default function PokemonZahlenAbenteuer() {
             next[activeRegionIdx] = 0;
             return next;
           });
-          setRegionUpMsg(REGIONS[unlockedCount] ? REGIONS[unlockedCount].name : null);
-          setTimeout(() => setRegionUpMsg(null), 2200);
+          setRegionUpMsg(REGIONS[unlockedCount] ? { idx: unlockedCount, name: REGIONS[unlockedCount].name } : null);
         }
         // Encounter starten
         const pool = remainingPool(region, caughtDex);
@@ -678,12 +682,27 @@ export default function PokemonZahlenAbenteuer() {
         </PixelPanel>
 
         {regionUpMsg && (
-          <div
-            className="text-center font-extrabold text-lg mb-3 p-2 border-4 border-black"
-            style={{ background: "#ffcb05", color: "#1a1a1a" }}
-          >
-            🎉 Neue Region freigeschaltet: „{regionUpMsg}"!
-          </div>
+          <PixelPanel className="p-4 mb-3 text-center" style={{ background: "#ffcb05" }}>
+            <div className="font-extrabold text-lg mb-3" style={{ color: "#1a1a1a" }}>
+              🎉 Neue Region freigeschaltet: „{regionUpMsg.name}"!
+            </div>
+            <div className="flex gap-2 justify-center flex-wrap">
+              <button
+                onClick={() => setRegionUpMsg(null)}
+                className="border-4 border-black px-4 py-2 font-bold text-sm"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Hier bleiben
+              </button>
+              <button
+                onClick={() => goToNewRegion(regionUpMsg.idx)}
+                className="border-4 border-black px-4 py-2 font-extrabold text-sm"
+                style={{ background: "#e3350d", color: "#fff" }}
+              >
+                Los geht's ▶
+              </button>
+            </div>
+          </PixelPanel>
         )}
 
         {/* Frage / Encounter / Ergebnis */}
