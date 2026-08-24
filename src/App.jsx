@@ -691,7 +691,7 @@ export default function PokemonZahlenAbenteuer() {
                     💨 Entkommen!
                   </div>
                   <div className="text-lg font-bold" style={{ color: "#1a1a1a" }}>
-                    {pokemonName(encounterDex)} ist geflohen. Nächstes Mal stehen die Chancen besser!
+                    {pokemonName(encounterDex)} ist geflohen.
                   </div>
                 </>
               )}
