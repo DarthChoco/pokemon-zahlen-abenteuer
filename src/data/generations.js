@@ -35,6 +35,13 @@ export function buildGenericRegions(dexStart, dexEnd, namePrefix) {
 export const GENERATIONS = [
   { id: 1, label: "Kanto", dexStart: 1, dexEnd: 151, regions: KANTO_REGIONS },
   { id: 2, label: "Johto", dexStart: 152, dexEnd: 251, regions: buildGenericRegions(152, 251, "Johto") },
+  { id: 3, label: "Hoenn", dexStart: 252, dexEnd: 386, regions: buildGenericRegions(252, 386, "Hoenn") },
+  { id: 4, label: "Sinnoh", dexStart: 387, dexEnd: 493, regions: buildGenericRegions(387, 493, "Sinnoh") },
+  { id: 5, label: "Einall", dexStart: 494, dexEnd: 649, regions: buildGenericRegions(494, 649, "Einall") },
+  { id: 6, label: "Kalos", dexStart: 650, dexEnd: 721, regions: buildGenericRegions(650, 721, "Kalos") },
+  { id: 7, label: "Alola", dexStart: 722, dexEnd: 809, regions: buildGenericRegions(722, 809, "Alola") },
+  { id: 8, label: "Galar", dexStart: 810, dexEnd: 905, regions: buildGenericRegions(810, 905, "Galar") },
+  { id: 9, label: "Paldea", dexStart: 906, dexEnd: 1025, regions: buildGenericRegions(906, 1025, "Paldea") },
 ];
 
 export function createDefaultGenerationProgress(generation) {
