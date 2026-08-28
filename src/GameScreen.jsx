@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { POKEMON_NAMES, pokemonName, isLegendary } from "./data/pokemon";
-import { REGIONS } from "./data/regions";
+import { pokemonName, isLegendary, preloadSprites } from "./data/pokemon";
+import { GENERATIONS, createDefaultGenerationProgress } from "./data/generations";
+import { getUnlockedGenerations, totalDexAcross } from "./logic/generations";
 import {
   FANG_START_CHANCE,
   FANG_STEP,
@@ -13,10 +14,9 @@ import { SKILLS_BY_ID } from "./data/skills";
 import { genQuestionForSkill, genOptionsForQuestion, randInt } from "./logic/questionGenerators";
 import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
-import { loadClassSave, saveClassSave, clearClassSave } from "./storage";
+import { loadSave, saveSave, clearSave } from "./storage";
 import { PixelPanel, PokeballIcon, PokemonSprite, RegionTile } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
-import ClassSwitcher from "./components/ClassSwitcher";
 
 /* Zieht für eine Region (anhand des Skill-Plans) zufällig einen der dort
    freigeschalteten Skills und erzeugt daraus eine konkrete Aufgabe +
@@ -31,14 +31,29 @@ function buildQuestion(regionIdx, regionPlan) {
   return { ...q, skillId, maxRange: skill.maxRange };
 }
 
-export default function GameScreen({ classLevel, onSwitchClass }) {
-  const savedGame = useState(() => loadClassSave(classLevel))[0];
+/* Versteckter Debug-Modus: 20 schnelle Klicks (< 1,2s Abstand) auf das
+   Pokéball-Icon in der Kopfzeile schalten ihn frei, ohne dass im UI vorher
+   irgendein Hinweis darauf sichtbar ist. Bleibt bis zum expliziten
+   Deaktivieren über localStorage aktiv. */
+const DEBUG_KEY = "pokeZahlenAbenteuer_debug";
+const DEBUG_CLICKS_REQUIRED = 20;
+const DEBUG_CLICK_WINDOW_MS = 1200;
 
-  const [activeRegionIdx, setActiveRegionIdx] = useState(() => savedGame?.activeRegionIdx ?? 0);
-  const [unlockedCount, setUnlockedCount] = useState(() => savedGame?.unlockedCount ?? 1);
-  const [regionStreaks, setRegionStreaks] = useState(
-    () => savedGame?.regionStreaks ?? REGIONS.map(() => 0)
+function loadDebugMode() {
+  try {
+    return localStorage.getItem(DEBUG_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export default function GameScreen() {
+  const savedGame = useState(() => loadSave())[0];
+
+  const [activeGenerationId, setActiveGenerationId] = useState(
+    () => savedGame?.activeGenerationId ?? GENERATIONS[0].id
   );
+  const [generationProgress, setGenerationProgress] = useState(() => savedGame?.generationProgress ?? {});
   const [caughtDex, setCaughtDex] = useState(() => new Set(savedGame?.caughtDex ?? []));
 
   const [score, setScore] = useState(() => savedGame?.score ?? 0);
@@ -48,7 +63,40 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
     () => savedGame?.fastAnswerSeconds ?? FAST_ANSWER_DEFAULT_SECONDS
   );
 
-  const regionPlan = useMemo(() => buildRegionSkillPlan(selectedSkillIds), [selectedSkillIds]);
+  // Jede Generation hat ihre eigene Regionen-Progression (activeRegionIdx/
+  // unlockedCount/regionStreaks), Punkte/Fangchance/Fertigkeiten bleiben
+  // dagegen global. Die Wrapper-Setter unten schreiben transparent in
+  // generationProgress[activeGenerationId], sodass der restliche Code
+  // (handleAnswer, switchRegion, ...) unverändert mit
+  // activeRegionIdx/unlockedCount/regionStreaks arbeiten kann.
+  const generation = GENERATIONS.find((g) => g.id === activeGenerationId);
+  const REGIONS = generation.regions;
+  const progress = generationProgress[activeGenerationId] ?? createDefaultGenerationProgress(generation);
+  const activeRegionIdx = progress.activeRegionIdx;
+  const unlockedCount = progress.unlockedCount;
+  const regionStreaks = progress.regionStreaks;
+
+  function updateGenProgress(updater) {
+    setGenerationProgress((prev) => {
+      const current = prev[activeGenerationId] ?? createDefaultGenerationProgress(generation);
+      return { ...prev, [activeGenerationId]: updater(current) };
+    });
+  }
+  function setActiveRegionIdx(v) {
+    updateGenProgress((p) => ({ ...p, activeRegionIdx: typeof v === "function" ? v(p.activeRegionIdx) : v }));
+  }
+  function setUnlockedCount(v) {
+    updateGenProgress((p) => ({ ...p, unlockedCount: typeof v === "function" ? v(p.unlockedCount) : v }));
+  }
+  function setRegionStreaks(v) {
+    updateGenProgress((p) => ({ ...p, regionStreaks: typeof v === "function" ? v(p.regionStreaks) : v }));
+  }
+
+  const regionPlan = useMemo(
+    () => buildRegionSkillPlan(selectedSkillIds, REGIONS.length),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedSkillIds, activeGenerationId]
+  );
   const region = REGIONS[activeRegionIdx];
 
   const [question, setQuestion] = useState(() => buildQuestion(activeRegionIdx, regionPlan));
@@ -69,12 +117,69 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  // Bei jeder relevanten Änderung den Spielstand dieser Klassenstufe sichern.
+  const [debugMode, setDebugMode] = useState(loadDebugMode);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const pokeballClicksRef = useRef({ count: 0, lastClick: 0 });
+
+  function handlePokeballClick() {
+    if (debugMode) return;
+    const now = Date.now();
+    const clicks = pokeballClicksRef.current;
+    if (now - clicks.lastClick > DEBUG_CLICK_WINDOW_MS) clicks.count = 0;
+    clicks.count += 1;
+    clicks.lastClick = now;
+    if (clicks.count >= DEBUG_CLICKS_REQUIRED) {
+      clicks.count = 0;
+      setDebugMode(true);
+      try {
+        localStorage.setItem(DEBUG_KEY, "1");
+      } catch {
+        // ignorieren
+      }
+    }
+  }
+
+  function disableDebugMode() {
+    setDebugMode(false);
+    setShowDebugPanel(false);
+    try {
+      localStorage.removeItem(DEBUG_KEY);
+    } catch {
+      // ignorieren
+    }
+  }
+
+  function debugCatchAllActiveGeneration() {
+    setCaughtDex((prev) => {
+      const next = new Set(prev);
+      for (let n = generation.dexStart; n <= generation.dexEnd; n++) next.add(n);
+      return next;
+    });
+  }
+
+  function debugCatchAllGenerations() {
+    setCaughtDex((prev) => {
+      const next = new Set(prev);
+      for (const gen of GENERATIONS) {
+        for (let n = gen.dexStart; n <= gen.dexEnd; n++) next.add(n);
+      }
+      return next;
+    });
+  }
+
+  function debugUnlockAllRegions() {
+    setUnlockedCount(REGIONS.length);
+  }
+
+  function debugMaxFangChance() {
+    setFangChance(100);
+  }
+
+  // Bei jeder relevanten Änderung den (einzigen) Spielstand sichern.
   useEffect(() => {
-    saveClassSave(classLevel, {
-      activeRegionIdx,
-      unlockedCount,
-      regionStreaks,
+    saveSave({
+      activeGenerationId,
+      generationProgress,
       caughtDex: Array.from(caughtDex),
       score,
       fangChance,
@@ -84,10 +189,8 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
       fastAnswerSeconds,
     });
   }, [
-    classLevel,
-    activeRegionIdx,
-    unlockedCount,
-    regionStreaks,
+    activeGenerationId,
+    generationProgress,
     caughtDex,
     score,
     fangChance,
@@ -97,18 +200,43 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
     fastAnswerSeconds,
   ]);
 
-  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen), sofort eine
-  // neue, zur neuen Auswahl passende Frage ziehen. Beim allerersten Rendern
-  // nicht auslösen, da die Startfrage schon per useState-Initializer steht.
-  const skillEffectRanOnce = useRef(false);
+  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen) ODER die
+  // aktive Generation wechselt, sofort eine neue, passende Frage ziehen.
+  // Beim allerersten Rendern nicht auslösen, da die Startfrage schon per
+  // useState-Initializer steht. Ein Generationswechsel darf NICHT
+  // synchron im selben Handler wie setActiveGenerationId ausgelöst werden
+  // (regionPlan hängt von der Generation ab und wäre wegen React-Batching
+  // noch der alte Closure-Wert) – deshalb läuft das über diesen Effect,
+  // der erst nach dem Re-Render mit frischem regionPlan feuert.
+  const restartQuestionRanOnce = useRef(false);
   useEffect(() => {
-    if (!skillEffectRanOnce.current) {
-      skillEffectRanOnce.current = true;
+    if (!restartQuestionRanOnce.current) {
+      restartQuestionRanOnce.current = true;
       return;
     }
     startNextQuestion(activeRegionIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSkillIds]);
+  }, [selectedSkillIds, activeGenerationId]);
+
+  // Welche Generationen sind bereits freigeschaltet (rein aus caughtDex
+  // abgeleitet, siehe src/logic/generations.js)? Sobald ihre Anzahl wächst,
+  // ist gerade eine neue Generation freigeschaltet worden -> Reveal-Banner.
+  const unlockedGenerations = useMemo(() => getUnlockedGenerations(caughtDex), [caughtDex]);
+  const prevUnlockedGenCountRef = useRef(unlockedGenerations.length);
+  const [genUpMsg, setGenUpMsg] = useState(null);
+  useEffect(() => {
+    if (unlockedGenerations.length > prevUnlockedGenCountRef.current) {
+      const newGen = unlockedGenerations[unlockedGenerations.length - 1];
+      setGenUpMsg(newGen);
+      preloadSprites(newGen.dexStart, newGen.dexEnd);
+    }
+    prevUnlockedGenCountRef.current = unlockedGenerations.length;
+  }, [unlockedGenerations]);
+
+  function switchGeneration(genId) {
+    if (!unlockedGenerations.some((g) => g.id === genId)) return;
+    setActiveGenerationId(genId);
+  }
 
   const totalCaught = caughtDex.size;
 
@@ -251,10 +379,9 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
   }
 
   function confirmRestart() {
-    clearClassSave(classLevel);
-    setActiveRegionIdx(0);
-    setUnlockedCount(1);
-    setRegionStreaks(REGIONS.map(() => 0));
+    clearSave();
+    setActiveGenerationId(GENERATIONS[0].id);
+    setGenerationProgress({});
     setCaughtDex(new Set());
     setScore(0);
     setFangChance(FANG_START_CHANCE);
@@ -272,6 +399,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
   const progressPct = Math.min(100, (streak / (region.needed || 1)) * 100);
   const isHighestRegion = activeRegionIdx === unlockedCount - 1;
   const encounterIsLegendary = encounterDex ? isLegendary(encounterDex) : false;
+  const totalDexAvailable = totalDexAcross(unlockedGenerations);
 
   return (
     <>
@@ -279,11 +407,17 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
         {/* Kopfzeile */}
         <PixelPanel className="p-3 flex flex-wrap items-center justify-between gap-3" style={{ background: "#e3350d" }}>
           <div className="flex items-center gap-3">
-            <PokeballIcon size={34} />
+            <button
+              onClick={handlePokeballClick}
+              aria-label="Poké-Ball"
+              style={{ background: "none", border: "none", padding: 0, cursor: "default" }}
+            >
+              <PokeballIcon size={34} />
+            </button>
             <div>
               <div className="text-xl font-extrabold tracking-widest text-white">POKÉ-ZAHLEN</div>
               <div className="text-sm font-bold text-white">
-                Klasse {classLevel} · {region.name}
+                {generation.label} · {region.name}
                 {!isHighestRegion && " (Nachfang-Modus)"}
               </div>
             </div>
@@ -291,7 +425,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
           <div className="flex items-center flex-wrap justify-end gap-2">
             <div className="text-right text-white mr-2">
               <div className="text-lg font-extrabold">{score} Punkte</div>
-              <div className="text-xs">Pokédex: {totalCaught}/151</div>
+              <div className="text-xs">Pokédex: {totalCaught}/{totalDexAvailable}</div>
             </div>
             <button
               onClick={() => {
@@ -326,33 +460,107 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
             >
               ⚙️ Fertigkeiten
             </button>
+            {debugMode && (
+              <button
+                onClick={() => {
+                  setShowDebugPanel((s) => !s);
+                  setShowMap(false);
+                  setShowDex(false);
+                  setShowSettings(false);
+                }}
+                className="border-4 border-black px-3 py-2 font-bold text-sm"
+                style={{ background: "#1a1a1a", color: "#fff" }}
+              >
+                🐛 Debug
+              </button>
+            )}
           </div>
         </PixelPanel>
 
+        {/* Debug-Panel (nur nach Geheim-Klickgeste sichtbar) */}
+        {debugMode && showDebugPanel && (
+          <PixelPanel className="p-3" style={{ background: "#fff6d8" }}>
+            <div className="font-extrabold mb-2 text-sm" style={{ color: "#1a1a1a" }}>
+              🐛 Debug-Werkzeuge
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={debugCatchAllActiveGeneration}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Alle Pokémon fangen ({generation.label})
+              </button>
+              <button
+                onClick={debugCatchAllGenerations}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Alle Pokémon aller Generationen fangen
+              </button>
+              <button
+                onClick={debugUnlockAllRegions}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Alle Regionen freischalten ({generation.label})
+              </button>
+              <button
+                onClick={debugMaxFangChance}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Fangchance auf 100%
+              </button>
+              <button
+                onClick={disableDebugMode}
+                className="border-4 border-black px-3 py-2 font-extrabold text-xs"
+                style={{ background: "#e3350d", color: "#fff" }}
+              >
+                Debug-Modus verlassen
+              </button>
+            </div>
+          </PixelPanel>
+        )}
+
         {/* Fertigkeiten-Einstellungen */}
         {showSettings && (
-          <div className="flex flex-col gap-3">
-            <ClassSwitcher activeClass={classLevel} onSwitch={onSwitchClass} />
-            <SkillSettings
-              classLevel={classLevel}
-              selectedSkillIds={selectedSkillIds}
-              fastAnswerSeconds={fastAnswerSeconds}
-              mode="settings"
-              onConfirm={changeSkillSelection}
-              onCancel={() => setShowSettings(false)}
-            />
-          </div>
+          <SkillSettings
+            selectedSkillIds={selectedSkillIds}
+            fastAnswerSeconds={fastAnswerSeconds}
+            mode="settings"
+            onConfirm={changeSkillSelection}
+            onCancel={() => setShowSettings(false)}
+          />
         )}
 
         {/* Pokédex */}
         {showDex && (
           <PixelPanel className="p-3" style={{ background: "#ffffff" }}>
-            <div className="font-extrabold mb-2 text-sm" style={{ color: "#1a1a1a" }}>
-              Pokédex – {totalCaught}/151 gefangen
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <div className="font-extrabold text-sm" style={{ color: "#1a1a1a" }}>
+                Pokédex – {totalCaught}/{totalDexAvailable} gefangen
+              </div>
+              {unlockedGenerations.length > 1 && (
+                <div className="flex gap-1 flex-wrap">
+                  {unlockedGenerations.map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => switchGeneration(g.id)}
+                      className="border-4 border-black px-2 py-1 font-extrabold text-xs"
+                      style={{
+                        background: g.id === activeGenerationId ? "#e3350d" : "#ffffff",
+                        color: g.id === activeGenerationId ? "#ffffff" : "#1a1a1a",
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-1 max-h-96 overflow-y-auto pr-1">
-              {POKEMON_NAMES.map((name, i) => {
-                const dex = i + 1;
+              {Array.from({ length: regionTotal(generation) }, (_, i) => generation.dexStart + i).map((dex) => {
                 const caught = caughtDex.has(dex);
                 return (
                   <div
@@ -371,7 +579,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
                       className="text-[11px] font-extrabold leading-tight"
                       style={{ color: caught ? "#1a1a1a" : "#aaa" }}
                     >
-                      {caught ? name : "?"}
+                      {caught ? pokemonName(dex) : "?"}
                     </div>
                   </div>
                 );
@@ -384,7 +592,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
         {showMap && (
           <PixelPanel className="p-3" style={{ background: "#ffffff" }}>
             <div className="font-extrabold mb-2 text-sm" style={{ color: "#1a1a1a" }}>
-              Kanto-Karte – wähle eine freigeschaltete Region
+              {generation.label}-Karte – wähle eine freigeschaltete Region
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {REGIONS.map((r, i) => {
@@ -442,6 +650,33 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
                 style={{ background: "#e3350d", color: "#fff" }}
               >
                 Los geht's ▶
+              </button>
+            </div>
+          </PixelPanel>
+        )}
+
+        {genUpMsg && (
+          <PixelPanel className="p-4 text-center" style={{ background: "#ffcb05" }}>
+            <div className="font-extrabold text-lg mb-3" style={{ color: "#1a1a1a" }}>
+              🎉 Pokédex komplett! „{genUpMsg.label}" ist jetzt freigeschaltet!
+            </div>
+            <div className="flex gap-2 justify-center flex-wrap">
+              <button
+                onClick={() => setGenUpMsg(null)}
+                className="border-4 border-black px-4 py-2 font-bold text-sm"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Hier bleiben
+              </button>
+              <button
+                onClick={() => {
+                  switchGeneration(genUpMsg.id);
+                  setGenUpMsg(null);
+                }}
+                className="border-4 border-black px-4 py-2 font-extrabold text-sm"
+                style={{ background: "#e3350d", color: "#fff" }}
+              >
+                Wechseln ▶
               </button>
             </div>
           </PixelPanel>

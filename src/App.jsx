@@ -1,15 +1,29 @@
 import React, { useState, useEffect, useRef } from "react";
-import { POKEMON_NAMES, pokeSpriteUrl } from "./data/pokemon";
-import { CLASS_DEFAULT_SKILLS } from "./data/skills";
-import { loadClassSave, loadMeta, saveMeta, createInitialClassSave, migrateLegacySaveIfNeeded } from "./storage";
+import { pokeSpriteUrl } from "./data/pokemon";
+import { DEFAULT_SKILLS } from "./data/skills";
+import { getUnlockedGenerations, totalDexAcross } from "./logic/generations";
+import { loadSave, createInitialSave } from "./storage";
 import { PixelPanel, PokeballIcon } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
-import ClassSwitcher from "./components/ClassSwitcher";
 import GameScreen from "./GameScreen";
 
+/* Beim Erststart (kein Save) wird nur Gen 1 vorgeladen; bei einem
+   bestehenden Save nur die darin bereits freigeschalteten Generationen –
+   so bleibt der Erststart schnell, spätere Starts laden trotzdem alle
+   bereits bekannten Sprites vor. */
+function preloadRangeForSave(save) {
+  const caughtDex = new Set(save?.caughtDex ?? []);
+  const unlocked = getUnlockedGenerations(caughtDex);
+  return { generations: unlocked, total: totalDexAcross(unlocked) };
+}
+
 export default function PokemonZahlenAbenteuer() {
-  /* --------- Sprite-Vorladen: alle 151 Bilder einmal laden,
-     damit das Spiel auch bei Internet-Abbruch weiterläuft --------- */
+  const initialSaveRef = useRef();
+  if (initialSaveRef.current === undefined) initialSaveRef.current = loadSave();
+  const preload = preloadRangeForSave(initialSaveRef.current);
+
+  /* --------- Sprite-Vorladen: Sprites der freigeschalteten Generation(en)
+     einmal laden, damit das Spiel auch bei Internet-Abbruch weiterläuft --------- */
   const [preloadedCount, setPreloadedCount] = useState(0);
   const [preloadFailed, setPreloadFailed] = useState(0);
   const [preloadReady, setPreloadReady] = useState(false);
@@ -17,53 +31,42 @@ export default function PokemonZahlenAbenteuer() {
 
   useEffect(() => {
     let cancelled = false;
-    for (let dex = 1; dex <= POKEMON_NAMES.length; dex++) {
-      const img = new Image();
-      img.onload = () => {
-        if (cancelled) return;
-        processedRef.current += 1;
-        setPreloadedCount((n) => n + 1);
-        if (processedRef.current >= POKEMON_NAMES.length) setPreloadReady(true);
-      };
-      img.onerror = () => {
-        if (cancelled) return;
-        processedRef.current += 1;
-        setPreloadFailed((n) => n + 1);
-        if (processedRef.current >= POKEMON_NAMES.length) setPreloadReady(true);
-      };
-      img.src = pokeSpriteUrl(dex);
+    for (const gen of preload.generations) {
+      for (let dex = gen.dexStart; dex <= gen.dexEnd; dex++) {
+        const img = new Image();
+        img.onload = () => {
+          if (cancelled) return;
+          processedRef.current += 1;
+          setPreloadedCount((n) => n + 1);
+          if (processedRef.current >= preload.total) setPreloadReady(true);
+        };
+        img.onerror = () => {
+          if (cancelled) return;
+          processedRef.current += 1;
+          setPreloadFailed((n) => n + 1);
+          if (processedRef.current >= preload.total) setPreloadReady(true);
+        };
+        img.src = pokeSpriteUrl(dex);
+      }
     }
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* --------- Klassenstufe: laden & wechseln, jede Klasse hat einen
-     eigenen Spielstand (siehe src/storage.js) --------- */
-  const [classLevel, setClassLevel] = useState(() => {
-    migrateLegacySaveIfNeeded();
-    return loadMeta()?.lastActiveClass ?? 1;
-  });
-  const [needsOnboarding, setNeedsOnboarding] = useState(() => loadClassSave(classLevel) == null);
-
-  useEffect(() => {
-    setNeedsOnboarding(loadClassSave(classLevel) == null);
-  }, [classLevel]);
-
-  function switchClass(level) {
-    setClassLevel(level);
-    saveMeta({ lastActiveClass: level });
-  }
+  /* --------- Ein einziger Spielstand --------- */
+  const [needsOnboarding, setNeedsOnboarding] = useState(() => initialSaveRef.current == null);
 
   function completeOnboarding(selectedSkillIds, fastAnswerSeconds) {
-    createInitialClassSave(classLevel, selectedSkillIds, fastAnswerSeconds);
+    createInitialSave(selectedSkillIds, fastAnswerSeconds);
     setNeedsOnboarding(false);
   }
 
   /* --------- Ladebildschirm, solange Sprites vorgeladen werden --------- */
   if (!preloadReady) {
-    const total = POKEMON_NAMES.length;
-    const pct = Math.round((preloadedCount / total) * 100);
+    const total = preload.total;
+    const pct = total > 0 ? Math.round((preloadedCount / total) * 100) : 100;
     return (
       <div
         className="min-h-screen w-full flex items-center justify-center p-4"
@@ -102,18 +105,13 @@ export default function PokemonZahlenAbenteuer() {
     >
       <div className="w-full max-w-2xl flex flex-col gap-3">
         {needsOnboarding ? (
-          <>
-            <ClassSwitcher activeClass={classLevel} onSwitch={switchClass} />
-            <SkillSettings
-              key={classLevel}
-              classLevel={classLevel}
-              selectedSkillIds={CLASS_DEFAULT_SKILLS[classLevel]}
-              mode="onboarding"
-              onConfirm={completeOnboarding}
-            />
-          </>
+          <SkillSettings
+            selectedSkillIds={DEFAULT_SKILLS}
+            mode="onboarding"
+            onConfirm={completeOnboarding}
+          />
         ) : (
-          <GameScreen key={classLevel} classLevel={classLevel} onSwitchClass={switchClass} />
+          <GameScreen />
         )}
       </div>
     </div>

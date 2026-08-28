@@ -9,13 +9,12 @@ import {
 import { PixelPanel } from "./PixelUI";
 
 /* Skill-Auswahl-Panel: legt fest, welche Rechenfertigkeiten in den Regionen
-   dieser Klassenstufe vorkommen dürfen, sowie die Zeitschwelle für den
-   Fangbonus bei schnellen richtigen Antworten.
-   mode "onboarding": blockierendes Overlay beim ersten Öffnen einer
-   Klassenstufe, vorausgefüllt mit dem Lehrplan-Vorschlag, kein Abbrechen.
+   vorkommen dürfen, sowie die Zeitschwelle für den Fangbonus bei schnellen
+   richtigen Antworten.
+   mode "onboarding": blockierendes Overlay beim allerersten Start,
+   vorausgefüllt mit einem zurückhaltenden Standard-Skillset, kein Abbrechen.
    mode "settings": jederzeit über den ⚙️-Button aufrufbar, mit Abbrechen. */
 export default function SkillSettings({
-  classLevel,
   selectedSkillIds,
   fastAnswerSeconds,
   onConfirm,
@@ -39,9 +38,7 @@ export default function SkillSettings({
   return (
     <PixelPanel className="p-4" style={{ background: "#ffffff" }}>
       <div className="text-lg font-extrabold mb-1" style={{ color: "#1a1a1a" }}>
-        {isOnboarding
-          ? `Willkommen! Was kann dein Kind in Klasse ${classLevel} schon?`
-          : `Fertigkeiten anpassen – Klasse ${classLevel}`}
+        {isOnboarding ? "Willkommen! Was kann dein Kind schon?" : "Fertigkeiten anpassen"}
       </div>
       <div className="text-xs font-bold mb-3" style={{ color: "#555" }}>
         Hak an, was bereits bekannt ist. Die Regionen werden automatisch von leicht nach schwer aus

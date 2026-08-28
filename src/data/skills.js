@@ -121,11 +121,11 @@ export const SKILLS_BY_ID = Object.fromEntries(SKILL_CATALOG.map((s) => [s.id, s
 /* layout "list": volle Breite, ein Skill pro Zeile mit Label (numrange-Stil).
    layout "grid": kompaktes Raster nummerierter Kacheln (1x1-Reihen-Stil). */
 export const SKILL_CATEGORIES = [
-  { key: "numrange", label: "Zahlenraum & Grundrechenarten", layout: "list" },
-  { key: "times", label: "Kleines Einmaleins", layout: "grid" },
+  { key: "numrange", label: "Zahlenraum (Addition & Subtraktion)", layout: "list" },
+  { key: "times", label: "Kleines 1x1", layout: "grid" },
   { key: "division", label: "Division (ohne Rest)", layout: "grid" },
-  { key: "times_big", label: "Großes 1x1 (Klasse 3)", layout: "list" },
-  { key: "division_big", label: "Division groß (Klasse 3)", layout: "list" },
+  { key: "times_big", label: "Großes 1x1", layout: "list" },
+  { key: "division_big", label: "Division groß", layout: "list" },
 ];
 
 /* Globale Schwierigkeits-Reihenfolge ALLER Skills (aufsteigend).
@@ -144,27 +144,8 @@ export const MASTER_SKILL_ORDER = [
   "numrange_1000000_nocarry", "numrange_1000000_carry",
 ];
 
-/* Lehrplan-orientierte Vorauswahl pro Klassenstufe (im Einstellungs-Assistenten
-   vorausgefüllt, vom Nutzer aber vollständig änderbar). Klasse 2 enthält
-   bewusst noch KEIN Einmaleins/Division, da Kinder zu Beginn der 2. Klasse
-   das kleine 1x1 typischerweise noch nicht können. */
-export const CLASS_DEFAULT_SKILLS = {
-  1: ["numrange_10", "numrange_20_nocarry", "numrange_20_carry"],
-  2: ["numrange_20_nocarry", "numrange_20_carry", "numrange_100_nocarry", "numrange_100_carry"],
-  3: [
-    "numrange_100_nocarry", "numrange_100_carry",
-    ...Array.from({ length: 10 }, (_, i) => `times_${i + 1}`),
-    "div_2", "div_5", "div_10",
-    "numrange_1000_nocarry", "numrange_1000_carry",
-  ],
-  4: [
-    "numrange_100_nocarry", "numrange_100_carry",
-    "numrange_1000_nocarry", "numrange_1000_carry",
-    "numrange_1000000_nocarry", "numrange_1000000_carry",
-    ...Array.from({ length: 10 }, (_, i) => `times_${i + 1}`),
-    ...Array.from({ length: 10 }, (_, i) => `div_${i + 1}`),
-    "times_big", "div_big",
-  ],
-};
-
-export const CLASS_LEVELS = [1, 2, 3, 4];
+/* Vorauswahl im Einstellungs-Assistenten beim allerersten Start (vom
+   Nutzer vollständig änderbar) – bewusst zurückhaltend (nur die
+   einfachsten Zahlenraum-Skills), da nicht mehr zwischen Klassenstufen
+   unterschieden wird. */
+export const DEFAULT_SKILLS = ["numrange_10", "numrange_20_nocarry", "numrange_20_carry"];
