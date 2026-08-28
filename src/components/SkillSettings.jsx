@@ -55,7 +55,7 @@ export default function SkillSettings({
             <div className="text-sm font-extrabold mb-2" style={{ color: "#1a1a1a" }}>
               {cat.label}
             </div>
-            {cat.key === "numrange" ? (
+            {cat.layout === "list" ? (
               <div className="flex flex-col gap-1">
                 {skills.map((s) => (
                   <button

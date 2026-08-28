@@ -10,7 +10,7 @@ import {
   FAST_ANSWER_DEFAULT_SECONDS,
 } from "./data/gameplay";
 import { SKILLS_BY_ID } from "./data/skills";
-import { genQuestionForSkill, genOptions, randInt } from "./logic/questionGenerators";
+import { genQuestionForSkill, genOptionsForQuestion, randInt } from "./logic/questionGenerators";
 import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
 import { loadClassSave, saveClassSave, clearClassSave } from "./storage";
@@ -52,7 +52,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
   const region = REGIONS[activeRegionIdx];
 
   const [question, setQuestion] = useState(() => buildQuestion(activeRegionIdx, regionPlan));
-  const [options, setOptions] = useState(() => (question ? genOptions(question.answer, question.maxRange) : []));
+  const [options, setOptions] = useState(() => (question ? genOptionsForQuestion(question, question.maxRange) : []));
 
   const [phase, setPhase] = useState("question"); // question | feedback | encounter | result
   const [feedback, setFeedback] = useState(null);
@@ -128,7 +128,7 @@ export default function GameScreen({ classLevel, onSwitchClass }) {
     questionShownAtRef.current = Date.now();
     const q = buildQuestion(regionIdx, regionPlan);
     setQuestion(q);
-    setOptions(q ? genOptions(q.answer, q.maxRange) : []);
+    setOptions(q ? genOptionsForQuestion(q, q.maxRange) : []);
     setPhase("question");
     setFeedback(null);
     setEncounterDex(null);

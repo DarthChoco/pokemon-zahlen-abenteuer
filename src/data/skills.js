@@ -43,6 +43,27 @@ function divisionSkill(row) {
   };
 }
 
+/* Großes 1x1 (Klasse 3): zweistellige Zahl × einstelliger Faktor, z. B.
+   23 × 4. Abgefragt wird nur das Endergebnis (Multiple-Choice) – das
+   schriftliche Rechenverfahren selbst wird hier NICHT geprüft. */
+const TIMES_BIG_SKILL = {
+  id: "times_big",
+  category: "times_big",
+  label: "Großes 1x1 (zweistellig × einstellig, z. B. 23 × 4)",
+  shortLabel: "Großes 1x1",
+  maxRange: 900,
+};
+
+/* Passende Division groß: mehrstelliger Dividend ÷ einstelliger Divisor,
+   immer ohne Rest (Umkehraufgabe zum großen 1x1). */
+const DIVISION_BIG_SKILL = {
+  id: "div_big",
+  category: "division_big",
+  label: "Division groß (mehrstellig ÷ einstellig, ohne Rest)",
+  shortLabel: "Division groß",
+  maxRange: 99,
+};
+
 export const SKILL_CATALOG = [
   numrangeSkill(
     "numrange_10", "Zahlenraum bis 10", "bis 10", 10, undefined,
@@ -91,14 +112,20 @@ export const SKILL_CATALOG = [
   ),
   ...Array.from({ length: 10 }, (_, i) => timesSkill(i + 1)),
   ...Array.from({ length: 10 }, (_, i) => divisionSkill(i + 1)),
+  TIMES_BIG_SKILL,
+  DIVISION_BIG_SKILL,
 ];
 
 export const SKILLS_BY_ID = Object.fromEntries(SKILL_CATALOG.map((s) => [s.id, s]));
 
+/* layout "list": volle Breite, ein Skill pro Zeile mit Label (numrange-Stil).
+   layout "grid": kompaktes Raster nummerierter Kacheln (1x1-Reihen-Stil). */
 export const SKILL_CATEGORIES = [
-  { key: "numrange", label: "Zahlenraum & Grundrechenarten" },
-  { key: "times", label: "Kleines Einmaleins" },
-  { key: "division", label: "Division (ohne Rest)" },
+  { key: "numrange", label: "Zahlenraum & Grundrechenarten", layout: "list" },
+  { key: "times", label: "Kleines Einmaleins", layout: "grid" },
+  { key: "division", label: "Division (ohne Rest)", layout: "grid" },
+  { key: "times_big", label: "Großes 1x1 (Klasse 3)", layout: "list" },
+  { key: "division_big", label: "Division groß (Klasse 3)", layout: "list" },
 ];
 
 /* Globale Schwierigkeits-Reihenfolge ALLER Skills (aufsteigend).
@@ -112,6 +139,7 @@ export const MASTER_SKILL_ORDER = [
   "times_4", "div_4", "times_3", "div_3", "times_6", "div_6",
   "times_9", "div_9", "times_7", "div_7", "times_8", "div_8",
   "times_1", "div_1",
+  "times_big", "div_big",
   "numrange_1000_nocarry", "numrange_1000_carry",
   "numrange_1000000_nocarry", "numrange_1000000_carry",
 ];
@@ -135,6 +163,7 @@ export const CLASS_DEFAULT_SKILLS = {
     "numrange_1000000_nocarry", "numrange_1000000_carry",
     ...Array.from({ length: 10 }, (_, i) => `times_${i + 1}`),
     ...Array.from({ length: 10 }, (_, i) => `div_${i + 1}`),
+    "times_big", "div_big",
   ],
 };
 
