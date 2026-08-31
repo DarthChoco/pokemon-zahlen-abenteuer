@@ -1,5 +1,6 @@
 import React from "react";
-import { pokeSpriteUrl, pokemonName } from "../data/pokemon";
+import { pokeSpriteUrl, pokeSpriteFallbackUrl, pokemonName } from "../data/pokemon";
+import { logFailedSprite } from "../debug";
 
 /* ======================================================================
    PIXEL / POKÉBALL-BAUSTEINE
@@ -51,12 +52,24 @@ export function PokeballIcon({ size = 28 }) {
 }
 
 /* Pokémon-Sprite, optional als Silhouette (dunkel eingefärbt)
-   solange das Pokémon noch nicht bekannt/gefangen ist */
+   solange das Pokémon noch nicht bekannt/gefangen ist. Einzelne Sprites
+   liefern über die Haupt-URL wiederholt einen Fehler, obwohl die Datei
+   im Quell-Repo unverändert vorhanden ist (CDN-Eigenheit) – bei Fehlern
+   wird deshalb einmalig auf einen Mirror ausgewichen, bevor der Fehlschlag
+   protokolliert wird (sichtbar im Debug-Panel). */
 export function PokemonSprite({ dex, size = 96, silhouette = false, alt }) {
   return (
     <img
       src={pokeSpriteUrl(dex)}
       alt={alt || (silhouette ? "Unbekanntes Pokémon" : pokemonName(dex))}
+      onError={(e) => {
+        if (e.target.dataset.fallbackTried) {
+          logFailedSprite(dex);
+          return;
+        }
+        e.target.dataset.fallbackTried = "1";
+        e.target.src = pokeSpriteFallbackUrl(dex);
+      }}
       style={{
         width: size,
         height: size,

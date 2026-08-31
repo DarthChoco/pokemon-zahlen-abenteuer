@@ -8,6 +8,7 @@
    oder erkennbar fehlerhafte (z. B. doppelt vergebene) Angaben lieferten,
    zusätzlich einzeln über die jeweilige Bulbapedia-Artikelseite verifiziert.
    ====================================================================== */
+import { logFailedSprite } from "../debug";
 
 export const POKEMON_NAMES = [
   // Gen 1 – Kanto (#1–151)
@@ -198,11 +199,20 @@ export function pokemonName(dexNr) {
   return POKEMON_NAMES[dexNr - 1];
 }
 
-/* Öffentliche Sprite-URL von PokeAPI (nach Dex-Nummer).
-   Bewusst nur EINE Auflösung pro Pokémon, damit beim Vorladen
-   jedes Sprite nur einmal heruntergeladen werden muss. */
+/* Sprite-URL: lokal im Repo vorgehalten (public/sprites/{dexNr}.png,
+   heruntergeladen von PokeAPI/sprites – official-artwork, CC0-Repo,
+   Bildinhalte © The Pokémon Company). Macht das Spiel unabhängig von
+   PokeAPI/GitHub/jsDelivr-Erreichbarkeit; kein externer Request mehr
+   nötig, kein CDN-Ausfall wie bei den zuvor gemeldeten 400-Fehlern. */
 export function pokeSpriteUrl(dexNr) {
-  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${dexNr}.png`;
+  return `/sprites/${dexNr}.png`;
+}
+
+/* Ausweich-URL über den PokeAPI-Mirror auf jsDelivr, nur als Sicherheitsnetz
+   falls eine lokale Datei fehlt/beschädigt ist (z. B. bei manuellem Bearbeiten
+   von public/sprites oder einem unvollständigen Checkout). */
+export function pokeSpriteFallbackUrl(dexNr) {
+  return `https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/${dexNr}.png`;
 }
 
 /* Legendäre/mythische Pokémon je Generation. Deutlich seltener zu fangen
@@ -244,6 +254,15 @@ export function isLegendary(dexNr) {
 export function preloadSprites(dexStart, dexEnd) {
   for (let dex = dexStart; dex <= dexEnd; dex++) {
     const img = new Image();
+    let usedFallback = false;
+    img.onerror = () => {
+      if (!usedFallback) {
+        usedFallback = true;
+        img.src = pokeSpriteFallbackUrl(dex);
+        return;
+      }
+      logFailedSprite(dex);
+    };
     img.src = pokeSpriteUrl(dex);
   }
 }

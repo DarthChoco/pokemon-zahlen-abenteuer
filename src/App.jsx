@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { pokeSpriteUrl } from "./data/pokemon";
+import { pokeSpriteUrl, pokeSpriteFallbackUrl } from "./data/pokemon";
 import { DEFAULT_SKILLS } from "./data/skills";
 import { getUnlockedGenerations, totalDexAcross } from "./logic/generations";
 import { loadSave, createInitialSave } from "./storage";
+import { logFailedSprite } from "./debug";
 import { PixelPanel, PokeballIcon } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
 import GameScreen from "./GameScreen";
@@ -25,7 +26,7 @@ export default function PokemonZahlenAbenteuer() {
   /* --------- Sprite-Vorladen: Sprites der freigeschalteten Generation(en)
      einmal laden, damit das Spiel auch bei Internet-Abbruch weiterläuft --------- */
   const [preloadedCount, setPreloadedCount] = useState(0);
-  const [preloadFailed, setPreloadFailed] = useState(0);
+  const [preloadFailedDex, setPreloadFailedDex] = useState([]);
   const [preloadReady, setPreloadReady] = useState(false);
   const processedRef = useRef(0);
 
@@ -34,6 +35,7 @@ export default function PokemonZahlenAbenteuer() {
     for (const gen of preload.generations) {
       for (let dex = gen.dexStart; dex <= gen.dexEnd; dex++) {
         const img = new Image();
+        let usedFallback = false;
         img.onload = () => {
           if (cancelled) return;
           processedRef.current += 1;
@@ -42,8 +44,14 @@ export default function PokemonZahlenAbenteuer() {
         };
         img.onerror = () => {
           if (cancelled) return;
+          if (!usedFallback) {
+            usedFallback = true;
+            img.src = pokeSpriteFallbackUrl(dex);
+            return;
+          }
           processedRef.current += 1;
-          setPreloadFailed((n) => n + 1);
+          logFailedSprite(dex);
+          setPreloadFailedDex((prev) => [...prev, dex]);
           if (processedRef.current >= preload.total) setPreloadReady(true);
         };
         img.src = pokeSpriteUrl(dex);
@@ -88,9 +96,13 @@ export default function PokemonZahlenAbenteuer() {
           <div className="text-sm font-bold" style={{ color: "#555" }}>
             {preloadedCount}/{total} geladen
           </div>
-          {preloadFailed > 0 && (
+          {preloadFailedDex.length > 0 && (
             <div className="text-xs font-bold mt-2" style={{ color: "#e3350d" }}>
-              {preloadFailed} Sprite(s) konnten nicht geladen werden – Spiel startet trotzdem.
+              {preloadFailedDex.length} Sprite(s) konnten nicht geladen werden – Spiel startet trotzdem.
+              <div className="mt-1 font-normal" style={{ color: "#888", wordBreak: "break-word" }}>
+                #{preloadFailedDex.slice(0, 30).join(", #")}
+                {preloadFailedDex.length > 30 && ` … (+${preloadFailedDex.length - 30} weitere)`}
+              </div>
             </div>
           )}
         </PixelPanel>

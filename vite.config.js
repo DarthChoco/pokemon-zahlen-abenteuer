@@ -24,17 +24,21 @@ export default defineConfig({
       },
       workbox: {
         // App-Shell (HTML/JS/CSS) wird automatisch vorgecacht.
-        // Zusätzlich: alle Pokémon-Sprites von PokeAPI dauerhaft im
-        // Service-Worker-Cache ablegen, damit sie auch offline verfügbar
-        // sind, sobald die Seite einmal mit Internet geöffnet wurde.
+        // Zusätzlich: alle Pokémon-Sprites von PokeAPI (+ jsDelivr-Mirror
+        // als Fallback für einzelne Dateien, die über raw.githubusercontent.com
+        // wiederholt fehlschlagen) dauerhaft im Service-Worker-Cache ablegen,
+        // damit sie auch offline verfügbar sind, sobald die Seite einmal mit
+        // Internet geöffnet wurde. maxEntries deckt alle 1025 Pokémon (Gen 1–9)
+        // über beide Quellen hinweg mit Puffer ab.
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.origin === "https://raw.githubusercontent.com",
+            urlPattern: ({ url }) =>
+              url.origin === "https://raw.githubusercontent.com" || url.origin === "https://cdn.jsdelivr.net",
             handler: "CacheFirst",
             options: {
               cacheName: "pokemon-sprites-cache",
               expiration: {
-                maxEntries: 200,
+                maxEntries: 1100,
                 maxAgeSeconds: 60 * 60 * 24 * 365, // 1 Jahr
               },
               cacheableResponse: { statuses: [0, 200] },

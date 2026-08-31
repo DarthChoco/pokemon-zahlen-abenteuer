@@ -15,6 +15,7 @@ import { genQuestionForSkill, genOptionsForQuestion, randInt } from "./logic/que
 import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
 import { loadSave, saveSave, clearSave } from "./storage";
+import { loadFailedSprites, clearFailedSprites } from "./debug";
 import { PixelPanel, PokeballIcon, PokemonSprite, RegionTile } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
 
@@ -173,6 +174,15 @@ export default function GameScreen() {
 
   function debugMaxFangChance() {
     setFangChance(100);
+  }
+
+  // Neu berechnet, sobald das Panel geöffnet/geschlossen wird (z. B. nach
+  // "Log leeren") – kein eigener State nötig, das Log lebt in localStorage.
+  const failedSprites = showDebugPanel ? loadFailedSprites() : [];
+  const [, forceDebugPanelRefresh] = useState(0);
+  function debugClearFailedSpriteLog() {
+    clearFailedSprites();
+    forceDebugPanelRefresh((n) => n + 1);
   }
 
   // Bei jeder relevanten Änderung den (einzigen) Spielstand sichern.
@@ -519,6 +529,34 @@ export default function GameScreen() {
               >
                 Debug-Modus verlassen
               </button>
+            </div>
+
+            <div className="mt-3 pt-3" style={{ borderTop: "2px solid #1a1a1a" }}>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                <div className="font-extrabold text-xs" style={{ color: "#1a1a1a" }}>
+                  Fehlgeschlagene Sprites ({failedSprites.length})
+                </div>
+                {failedSprites.length > 0 && (
+                  <button
+                    onClick={debugClearFailedSpriteLog}
+                    className="border-4 border-black px-2 py-1 font-bold text-xs"
+                    style={{ background: "#ffffff", color: "#1a1a1a" }}
+                  >
+                    Log leeren
+                  </button>
+                )}
+              </div>
+              {failedSprites.length === 0 ? (
+                <div className="text-xs font-bold" style={{ color: "#555" }}>
+                  Bisher keine fehlgeschlagenen Sprites protokolliert.
+                </div>
+              ) : (
+                <div className="text-xs font-bold" style={{ color: "#e3350d", wordBreak: "break-word" }}>
+                  {failedSprites
+                    .map((dex) => `#${dex} ${pokemonName(dex) ?? "?"}`)
+                    .join(", ")}
+                </div>
+              )}
             </div>
           </PixelPanel>
         )}
