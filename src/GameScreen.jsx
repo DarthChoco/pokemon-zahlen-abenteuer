@@ -629,8 +629,27 @@ export default function GameScreen() {
         {/* Karte */}
         {showMap && (
           <PixelPanel className="p-3" style={{ background: "#ffffff" }}>
-            <div className="font-extrabold mb-2 text-sm" style={{ color: "#1a1a1a" }}>
-              {generation.label}-Karte – wähle eine freigeschaltete Region
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <div className="font-extrabold text-sm" style={{ color: "#1a1a1a" }}>
+                {generation.label}-Karte – wähle eine freigeschaltete Region
+              </div>
+              {unlockedGenerations.length > 1 && (
+                <div className="flex gap-1 flex-wrap">
+                  {unlockedGenerations.map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => switchGeneration(g.id)}
+                      className="border-4 border-black px-2 py-1 font-extrabold text-xs"
+                      style={{
+                        background: g.id === activeGenerationId ? "#e3350d" : "#ffffff",
+                        color: g.id === activeGenerationId ? "#ffffff" : "#1a1a1a",
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {REGIONS.map((r, i) => {
