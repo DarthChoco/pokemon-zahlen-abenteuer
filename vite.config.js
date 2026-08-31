@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "apple-touch-icon.png"],
       manifest: {
-        name: "Poké-Zahlen Abenteuer",
-        short_name: "PokéZahlen",
+        name: "Pokémon Zahlen Abenteuer",
+        short_name: "Pokémon Zahlen",
         description: "Matheaufgaben lösen und Pokémon aus Kanto fangen",
         theme_color: "#e3350d",
         background_color: "#ffffff",

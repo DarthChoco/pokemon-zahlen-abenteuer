@@ -425,7 +425,7 @@ export default function GameScreen() {
               <PokeballIcon size={34} />
             </button>
             <div>
-              <div className="text-xl font-extrabold tracking-widest text-white">POKÉ-ZAHLEN</div>
+              <div className="text-xl font-extrabold tracking-widest text-white">POKÉMON ZAHLEN ABENTEUER</div>
               <div className="text-sm font-bold text-white">
                 {generation.label} · {region.name}
                 {!isHighestRegion && " (Nachfang-Modus)"}
