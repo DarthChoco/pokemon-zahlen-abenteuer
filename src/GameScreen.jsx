@@ -16,6 +16,7 @@ import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
 import { loadSave, saveSave, clearSave, encodeSaveCode, decodeSaveCode } from "./storage";
 import { loadFailedSprites, clearFailedSprites } from "./debug";
+import { saveProfileToCloud } from "./cloud";
 import { PixelPanel, PokeballIcon, PokemonSprite, RegionTile } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
 
@@ -48,7 +49,7 @@ function loadDebugMode() {
   }
 }
 
-export default function GameScreen() {
+export default function GameScreen({ profileCode }) {
   const savedGame = useState(() => loadSave())[0];
 
   const [activeGenerationId, setActiveGenerationId] = useState(
@@ -251,8 +252,13 @@ export default function GameScreen() {
   // saveSave() liest nach dem Schreiben zurück und meldet ehrlich, ob es
   // wirklich geklappt hat (manche Browser – z. B. Kindermodus-Browser –
   // nehmen setItem() klaglos entgegen, behalten den Wert aber nicht).
+  // Zusätzlich (falls ein Profil-Code vorhanden ist) entprellt in die
+  // Cloud schreiben – überlebt damit auch Browser, die localStorage gar
+  // nicht behalten, und macht den Fortschritt geräteübergreifend verfügbar.
   useEffect(() => {
-    setSaveOk(saveSave(buildSaveState()));
+    const state = buildSaveState();
+    setSaveOk(saveSave(state));
+    if (profileCode) saveProfileToCloud(profileCode, state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeGenerationId,
@@ -264,6 +270,7 @@ export default function GameScreen() {
     totalCorrect,
     selectedSkillIds,
     fastAnswerSeconds,
+    profileCode,
   ]);
 
   function applyImportedSave(decoded) {
@@ -587,6 +594,14 @@ export default function GameScreen() {
             behalten (z. B. manche Kindermodus-Browser). */}
         {showSaveCodePanel && (
           <PixelPanel className="p-3" style={{ background: "#ffffff" }}>
+            {profileCode && (
+              <div
+                className="border-4 border-black p-2 mb-3 text-xs font-bold text-center"
+                style={{ background: "#fff6d8", color: "#1a1a1a" }}
+              >
+                🔑 Dein Profil-Code (für andere Geräte): <span className="tracking-widest">{profileCode}</span>
+              </div>
+            )}
             {!saveOk && (
               <div
                 className="border-4 border-black p-2 mb-3 text-xs font-bold"
