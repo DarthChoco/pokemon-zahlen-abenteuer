@@ -22,12 +22,21 @@ export function loadSave() {
   }
 }
 
+/* Gibt true zurück, wenn der Spielstand tatsächlich persistiert wurde,
+   sonst false – z. B. weil localStorage nicht verfügbar ist (Artefakt-
+   Vorschau), der Speicher voll ist, oder weil der Browser (z. B. manche
+   Kindermodus-Browser) setItem() zwar klaglos entgegennimmt, den Wert
+   aber gar nicht wirklich behält. Deshalb wird nach dem Schreiben direkt
+   zurückgelesen, statt setItem() blind zu vertrauen. Der Aufrufer kann
+   damit dem Nutzer sichtbar machen, dass der Fortschritt evtl. verloren
+   geht, statt dass es einfach lautlos passiert. */
 export function saveSave(state) {
+  const payload = JSON.stringify({ ...state, schemaVersion: 3 });
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...state, schemaVersion: 3 }));
+    localStorage.setItem(SAVE_KEY, payload);
+    return localStorage.getItem(SAVE_KEY) === payload;
   } catch {
-    // z. B. localStorage nicht verfügbar (Artefakt-Vorschau) oder Speicher voll –
-    // Spiel läuft trotzdem weiter, nur ohne Persistenz.
+    return false;
   }
 }
 
@@ -36,6 +45,32 @@ export function clearSave() {
     localStorage.removeItem(SAVE_KEY);
   } catch {
     // ignorieren
+  }
+}
+
+/* Manueller Speicherstand-Code als Absicherung gegen Browser, die
+   localStorage nicht zuverlässig behalten (z. B. manche Kindermodus-
+   Browser, die den Speicher beim Schließen der App leeren). Der Code
+   wird aus dem AKTUELLEN, im React-State gehaltenen Spielstand erzeugt,
+   nicht aus localStorage – funktioniert also auch, wenn das Speichern
+   dorthin gerade fehlschlägt. */
+export function encodeSaveCode(state) {
+  try {
+    const json = JSON.stringify({ ...state, schemaVersion: 3 });
+    return btoa(unescape(encodeURIComponent(json)));
+  } catch {
+    return null;
+  }
+}
+
+export function decodeSaveCode(code) {
+  try {
+    const json = decodeURIComponent(escape(atob(code.trim())));
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.caughtDex)) return null;
+    return parsed;
+  } catch {
+    return null;
   }
 }
 

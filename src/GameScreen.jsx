@@ -14,7 +14,7 @@ import { SKILLS_BY_ID } from "./data/skills";
 import { genQuestionForSkill, genOptionsForQuestion, randInt } from "./logic/questionGenerators";
 import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
-import { loadSave, saveSave, clearSave } from "./storage";
+import { loadSave, saveSave, clearSave, encodeSaveCode, decodeSaveCode } from "./storage";
 import { loadFailedSprites, clearFailedSprites } from "./debug";
 import { PixelPanel, PokeballIcon, PokemonSprite, RegionTile } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
@@ -118,6 +118,17 @@ export default function GameScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
+  // Speicherstand-Sicherung: manueller Code als Absicherung für Browser
+  // (z. B. manche Kindermodus-Browser), die localStorage nicht zuverlässig
+  // behalten. saveOk wird nach jedem Speicherversuch aktualisiert (siehe
+  // Save-Effect unten) und blendet bei Fehlschlag einen Hinweis ein.
+  const [saveOk, setSaveOk] = useState(true);
+  const [showSaveCodePanel, setShowSaveCodePanel] = useState(false);
+  const [importCodeInput, setImportCodeInput] = useState("");
+  const [importError, setImportError] = useState(false);
+  const [importVersion, setImportVersion] = useState(0);
+  const [codeCopied, setCodeCopied] = useState(false);
+
   const [debugMode, setDebugMode] = useState(loadDebugMode);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const pokeballClicksRef = useRef({ count: 0, lastClick: 0 });
@@ -158,6 +169,40 @@ export default function GameScreen() {
     });
   }
 
+  // Fängt nur die Pokémon des aktuell aktiven GEBIETS (z. B. "Route 1"),
+  // nicht der ganzen Region (Generation) wie debugCatchAllActiveGeneration.
+  function debugCatchAllCurrentArea() {
+    setCaughtDex((prev) => {
+      const next = new Set(prev);
+      for (let n = region.dexStart; n <= region.dexEnd; n++) next.add(n);
+      return next;
+    });
+  }
+
+  // Simuliert, dass die Serien-Anforderung des aktuell aktiven Gebiets
+  // erfüllt wurde – identisch zur Freischaltungs-Logik in handleAnswer:
+  // ist es das höchste noch nicht abgeschlossene Gebiet, wird direkt das
+  // nächste freigeschaltet (inkl. Freischalten-Banner), sonst wird nur
+  // die Serie dieses Gebiets auf "geschafft" gesetzt.
+  function debugCompleteCurrentArea() {
+    const isHighest = activeRegionIdx === unlockedCount - 1;
+    if (isHighest && unlockedCount < REGIONS.length) {
+      setUnlockedCount((c) => c + 1);
+      setRegionStreaks((prev) => {
+        const next = [...prev];
+        next[activeRegionIdx] = 0;
+        return next;
+      });
+      setRegionUpMsg(REGIONS[unlockedCount] ? { idx: unlockedCount, name: REGIONS[unlockedCount].name } : null);
+    } else {
+      setRegionStreaks((prev) => {
+        const next = [...prev];
+        next[activeRegionIdx] = region.needed;
+        return next;
+      });
+    }
+  }
+
   function debugCatchAllGenerations() {
     setCaughtDex((prev) => {
       const next = new Set(prev);
@@ -185,9 +230,11 @@ export default function GameScreen() {
     forceDebugPanelRefresh((n) => n + 1);
   }
 
-  // Bei jeder relevanten Änderung den (einzigen) Spielstand sichern.
-  useEffect(() => {
-    saveSave({
+  // Zentrale Zusammenstellung des Spielstands – genutzt sowohl vom
+  // Save-Effect (localStorage) als auch vom manuellen Sicherungs-Code
+  // (funktioniert unabhängig davon, ob localStorage gerade funktioniert).
+  function buildSaveState() {
+    return {
       activeGenerationId,
       generationProgress,
       caughtDex: Array.from(caughtDex),
@@ -197,7 +244,16 @@ export default function GameScreen() {
       totalCorrect,
       selectedSkillIds,
       fastAnswerSeconds,
-    });
+    };
+  }
+
+  // Bei jeder relevanten Änderung den (einzigen) Spielstand sichern.
+  // saveSave() liest nach dem Schreiben zurück und meldet ehrlich, ob es
+  // wirklich geklappt hat (manche Browser – z. B. Kindermodus-Browser –
+  // nehmen setItem() klaglos entgegen, behalten den Wert aber nicht).
+  useEffect(() => {
+    setSaveOk(saveSave(buildSaveState()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeGenerationId,
     generationProgress,
@@ -210,14 +266,40 @@ export default function GameScreen() {
     fastAnswerSeconds,
   ]);
 
-  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen) ODER die
-  // aktive Generation wechselt, sofort eine neue, passende Frage ziehen.
-  // Beim allerersten Rendern nicht auslösen, da die Startfrage schon per
-  // useState-Initializer steht. Ein Generationswechsel darf NICHT
-  // synchron im selben Handler wie setActiveGenerationId ausgelöst werden
-  // (regionPlan hängt von der Generation ab und wäre wegen React-Batching
-  // noch der alte Closure-Wert) – deshalb läuft das über diesen Effect,
-  // der erst nach dem Re-Render mit frischem regionPlan feuert.
+  function applyImportedSave(decoded) {
+    setActiveGenerationId(decoded.activeGenerationId ?? GENERATIONS[0].id);
+    setGenerationProgress(decoded.generationProgress ?? {});
+    setCaughtDex(new Set(decoded.caughtDex ?? []));
+    setScore(decoded.score ?? 0);
+    setFangChance(decoded.fangChance ?? FANG_START_CHANCE);
+    setTotalAnswered(decoded.totalAnswered ?? 0);
+    setTotalCorrect(decoded.totalCorrect ?? 0);
+    setSelectedSkillIds(decoded.selectedSkillIds ?? []);
+    setFastAnswerSeconds(decoded.fastAnswerSeconds ?? FAST_ANSWER_DEFAULT_SECONDS);
+    setImportVersion((v) => v + 1);
+    setImportCodeInput("");
+    setImportError(false);
+    setShowSaveCodePanel(false);
+  }
+
+  function handleImportCode() {
+    const decoded = decodeSaveCode(importCodeInput);
+    if (!decoded) {
+      setImportError(true);
+      return;
+    }
+    applyImportedSave(decoded);
+  }
+
+  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen), die
+  // aktive Generation wechselt, ODER ein Speicherstand importiert wird,
+  // sofort eine neue, passende Frage ziehen. Beim allerersten Rendern
+  // nicht auslösen, da die Startfrage schon per useState-Initializer
+  // steht. Das darf NICHT synchron im selben Handler wie die jeweiligen
+  // State-Updates ausgelöst werden (regionPlan hängt von Generation/
+  // Skills ab und wäre wegen React-Batching noch der alte Closure-Wert)
+  // – deshalb läuft das über diesen Effect, der erst nach dem Re-Render
+  // mit frischem regionPlan feuert.
   const restartQuestionRanOnce = useRef(false);
   useEffect(() => {
     if (!restartQuestionRanOnce.current) {
@@ -226,7 +308,7 @@ export default function GameScreen() {
     }
     startNextQuestion(activeRegionIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSkillIds, activeGenerationId]);
+  }, [selectedSkillIds, activeGenerationId, importVersion]);
 
   // Welche Generationen sind bereits freigeschaltet (rein aus caughtDex
   // abgeleitet, siehe src/logic/generations.js)? Sobald ihre Anzahl wächst,
@@ -470,6 +552,19 @@ export default function GameScreen() {
             >
               ⚙️ Fertigkeiten
             </button>
+            <button
+              onClick={() => {
+                setShowSaveCodePanel((s) => !s);
+                setImportError(false);
+                setShowMap(false);
+                setShowDex(false);
+                setShowSettings(false);
+              }}
+              className="border-4 border-black px-3 py-2 font-bold text-sm"
+              style={{ background: saveOk ? "#ffffff" : "#e3350d", color: saveOk ? "#1a1a1a" : "#fff" }}
+            >
+              💾 Speicherstand
+            </button>
             {debugMode && (
               <button
                 onClick={() => {
@@ -487,6 +582,91 @@ export default function GameScreen() {
           </div>
         </PixelPanel>
 
+        {/* Speicherstand: Sicherungs-Code exportieren/importieren –
+            Absicherung für Browser, die localStorage nicht zuverlässig
+            behalten (z. B. manche Kindermodus-Browser). */}
+        {showSaveCodePanel && (
+          <PixelPanel className="p-3" style={{ background: "#ffffff" }}>
+            {!saveOk && (
+              <div
+                className="border-4 border-black p-2 mb-3 text-xs font-bold"
+                style={{ background: "#fff0ee", color: "#e3350d" }}
+              >
+                ⚠️ Der Fortschritt konnte gerade nicht automatisch gespeichert werden (dieser Browser
+                behält localStorage evtl. nicht zuverlässig). Sichere unten regelmäßig den Code, damit
+                nichts verloren geht.
+              </div>
+            )}
+            <div className="mb-4">
+              <div className="font-extrabold text-sm mb-1" style={{ color: "#1a1a1a" }}>
+                Sichern
+              </div>
+              <div className="text-xs font-bold mb-2" style={{ color: "#555" }}>
+                Diesen Code kopieren und z. B. in einer Notiz aufbewahren. Auf einem anderen Gerät
+                (oder nach einem Neustart, falls hier nicht gespeichert wird) unten wieder einfügen.
+              </div>
+              <textarea
+                readOnly
+                value={encodeSaveCode(buildSaveState()) ?? ""}
+                onFocus={(e) => e.target.select()}
+                className="border-4 border-black w-full p-2 text-xs font-mono"
+                style={{ background: "#f4f4f4", color: "#1a1a1a", height: 80, resize: "none" }}
+              />
+              <button
+                onClick={async () => {
+                  const code = encodeSaveCode(buildSaveState());
+                  try {
+                    await navigator.clipboard.writeText(code ?? "");
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 2000);
+                  } catch {
+                    // Zwischenablage evtl. nicht verfügbar – Code steht trotzdem im Textfeld zum manuellen Kopieren.
+                  }
+                }}
+                className="mt-2 border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffcb05", color: "#1a1a1a" }}
+              >
+                {codeCopied ? "✅ Kopiert!" : "📋 Code kopieren"}
+              </button>
+            </div>
+            <div>
+              <div className="font-extrabold text-sm mb-1" style={{ color: "#1a1a1a" }}>
+                Wiederherstellen
+              </div>
+              <div className="text-xs font-bold mb-2" style={{ color: "#555" }}>
+                Achtung: überschreibt den aktuellen Fortschritt in diesem Browser.
+              </div>
+              <textarea
+                value={importCodeInput}
+                onChange={(e) => {
+                  setImportCodeInput(e.target.value);
+                  setImportError(false);
+                }}
+                placeholder="Code hier einfügen …"
+                className="border-4 border-black w-full p-2 text-xs font-mono"
+                style={{ background: "#f4f4f4", color: "#1a1a1a", height: 80, resize: "none" }}
+              />
+              {importError && (
+                <div className="text-xs font-bold mt-1" style={{ color: "#e3350d" }}>
+                  Dieser Code konnte nicht gelesen werden. Bitte vollständig kopieren.
+                </div>
+              )}
+              <button
+                onClick={handleImportCode}
+                disabled={!importCodeInput.trim()}
+                className="mt-2 border-4 border-black px-3 py-2 font-extrabold text-xs"
+                style={{
+                  background: importCodeInput.trim() ? "#e3350d" : "#c9c9c9",
+                  color: "#ffffff",
+                  cursor: importCodeInput.trim() ? "pointer" : "not-allowed",
+                }}
+              >
+                Wiederherstellen
+              </button>
+            </div>
+          </PixelPanel>
+        )}
+
         {/* Debug-Panel (nur nach Geheim-Klickgeste sichtbar) */}
         {debugMode && showDebugPanel && (
           <PixelPanel className="p-3" style={{ background: "#fff6d8" }}>
@@ -494,6 +674,20 @@ export default function GameScreen() {
               🐛 Debug-Werkzeuge
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                onClick={debugCompleteCurrentArea}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Aktuelles Gebiet abschließen ({region.name})
+              </button>
+              <button
+                onClick={debugCatchAllCurrentArea}
+                className="border-4 border-black px-3 py-2 font-bold text-xs"
+                style={{ background: "#ffffff", color: "#1a1a1a" }}
+              >
+                Alle Pokémon aus Gebiet fangen ({region.name})
+              </button>
               <button
                 onClick={debugCatchAllActiveGeneration}
                 className="border-4 border-black px-3 py-2 font-bold text-xs"
@@ -513,7 +707,7 @@ export default function GameScreen() {
                 className="border-4 border-black px-3 py-2 font-bold text-xs"
                 style={{ background: "#ffffff", color: "#1a1a1a" }}
               >
-                Alle Regionen freischalten ({generation.label})
+                Alle Gebiete freischalten ({generation.label})
               </button>
               <button
                 onClick={debugMaxFangChance}
