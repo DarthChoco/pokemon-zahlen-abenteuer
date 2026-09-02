@@ -99,7 +99,7 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
             Profil-Code eingeben
           </div>
           <div className="text-xs font-bold mb-3" style={{ color: "#555" }}>
-            Zum Beispiel: GLURAK-42
+            Zum Beispiel: GLURAK-4821
           </div>
           <input
             value={codeInput}
@@ -107,7 +107,7 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
               setCodeInput(e.target.value);
               setNotFoundConfirm(false);
             }}
-            placeholder="CODE-00"
+            placeholder="CODE-0000"
             className="border-4 border-black w-full px-3 py-3 mb-3 text-xl font-extrabold text-center tracking-widest"
             style={{ background: "#f4f4f4", color: "#1a1a1a" }}
             autoCapitalize="characters"

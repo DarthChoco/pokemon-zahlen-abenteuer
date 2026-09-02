@@ -34,13 +34,20 @@ export function isCloudAvailable() {
 }
 
 /* Profil-Code: ein Pokémon-Name (nur Buchstaben, damit er sich leicht
-   abschreiben/eintippen lässt) + eine zweistellige Zahl, z. B. "GLURAK-42".
-   Dient direkt als Firestore-Dokument-ID unter der Collection "saves". */
+   abschreiben/eintippen lässt) + eine vierstellige Zahl, z. B. "GLURAK-4821".
+   Dient direkt als Firestore-Dokument-ID unter der Collection "saves".
+   Die Firestore-Regeln (siehe FIREBASE_SETUP.md) erlauben Lesen/Schreiben
+   für jeden, der den exakten Code kennt – Schutz vor Erraten/Durchprobieren
+   kommt daher direkt aus der Kombinationsanzahl: ~1.000 Wörter × 9.000
+   Zahlen ≈ 9 Millionen mögliche Codes. Ein Skript, das alle durchprobiert,
+   würde Firebases kostenloses Tageskontingent (50.000 Lesevorgänge) weit
+   vor Erfolg aufbrauchen – ergänzend dazu App Check (siehe FIREBASE_SETUP.md,
+   optionaler nächster Schritt) gegen automatisierte Skript-Zugriffe. */
 const CODE_WORD_POOL = POKEMON_NAMES.filter((n) => /^[A-Za-zÄÖÜäöüß]+$/.test(n)).map((n) => n.toUpperCase());
 
 export function generateProfileCode() {
   const word = CODE_WORD_POOL[Math.floor(Math.random() * CODE_WORD_POOL.length)];
-  const number = Math.floor(Math.random() * 90) + 10; // 10–99
+  const number = Math.floor(Math.random() * 9000) + 1000; // 1000–9999
   return `${word}-${number}`;
 }
 

@@ -21,12 +21,12 @@
    ====================================================================== */
 
 export const firebaseConfig = {
-  apiKey: "DEIN-API-KEY",
-  authDomain: "DEIN-PROJEKT.firebaseapp.com",
-  projectId: "DEIN-PROJEKT",
-  storageBucket: "DEIN-PROJEKT.firebasestorage.app",
-  messagingSenderId: "DEINE-SENDER-ID",
-  appId: "DEINE-APP-ID",
+  apiKey: "AIzaSyAvb1ck_dG97c6Gbvb1lWsU-6RaovFBA9U",
+  authDomain: "pokemon-47690.firebaseapp.com",
+  projectId: "pokemon-47690",
+  storageBucket: "pokemon-47690.firebasestorage.app",
+  messagingSenderId: "1035738607696",
+  appId: "1:1035738607696:web:b88e936ba7c699bb1ce155"
 };
 
 /* Ist die Konfiguration oben bereits ausgefüllt? Solange nicht, bleibt
