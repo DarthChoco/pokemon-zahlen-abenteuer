@@ -16,6 +16,7 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
   const [codeInput, setCodeInput] = useState("");
   const [checking, setChecking] = useState(false);
   const [notFoundConfirm, setNotFoundConfirm] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
 
   async function submitExistingCode() {
     const code = normalizeProfileCode(codeInput);
@@ -23,6 +24,11 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
     setChecking(true);
     const exists = await onCheckCode(code);
     setChecking(false);
+    if (exists === null) {
+      setConnectionError(true);
+      return;
+    }
+    setConnectionError(false);
     if (exists === false && !notFoundConfirm) {
       setNotFoundConfirm(true);
       return;
@@ -106,12 +112,23 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
             onChange={(e) => {
               setCodeInput(e.target.value);
               setNotFoundConfirm(false);
+              setConnectionError(false);
             }}
             placeholder="CODE-0000"
             className="border-4 border-black w-full px-3 py-3 mb-3 text-xl font-extrabold text-center tracking-widest"
             style={{ background: "#f4f4f4", color: "#1a1a1a" }}
             autoCapitalize="characters"
           />
+          {connectionError && (
+            <div
+              className="border-4 border-black p-2 mb-3 text-xs font-bold text-left"
+              style={{ background: "#fff0ee", color: "#e3350d" }}
+            >
+              ⚠️ Der Code konnte gerade nicht geprüft werden (z. B. keine Internetverbindung oder
+              ein Problem mit der Cloud-Einrichtung). Bitte Internet prüfen und nochmal versuchen –
+              nicht einfach fortfahren, sonst startet evtl. versehentlich ein neues, leeres Profil.
+            </div>
+          )}
           {notFoundConfirm && (
             <div
               className="border-4 border-black p-2 mb-3 text-xs font-bold text-left"
@@ -126,6 +143,7 @@ export default function ProfilePicker({ onSelect, onCheckCode }) {
               onClick={() => {
                 setMode(null);
                 setNotFoundConfirm(false);
+                setConnectionError(false);
               }}
               className="border-4 border-black px-4 py-2 font-bold text-sm"
               style={{ background: "#ffffff", color: "#1a1a1a" }}

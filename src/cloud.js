@@ -23,7 +23,13 @@ function getDb() {
       const [appMod, firestoreMod] = await Promise.all([import("firebase/app"), import("firebase/firestore/lite")]);
       const app = appMod.getApps().length ? appMod.getApps()[0] : appMod.initializeApp(firebaseConfig);
       const db = firestoreMod.getFirestore(app);
-      return { db, doc: firestoreMod.doc, getDoc: firestoreMod.getDoc, setDoc: firestoreMod.setDoc };
+      return {
+        db,
+        doc: firestoreMod.doc,
+        getDoc: firestoreMod.getDoc,
+        setDoc: firestoreMod.setDoc,
+        deleteDoc: firestoreMod.deleteDoc,
+      };
     })();
   }
   return dbModulePromise;
@@ -31,6 +37,35 @@ function getDb() {
 
 export function isCloudAvailable() {
   return isFirebaseConfigured();
+}
+
+/* Lokal gemerkter Profil-Code dieses Geräts/Browsers, damit man den Code
+   nicht bei jedem Start erneut eingeben muss. Getrennt von den übrigen
+   Speicher-Helfern in storage.js, weil es sich um die Profil-IDENTITÄT
+   handelt, nicht um Spielfortschritt. */
+const PROFILE_CODE_KEY = "pokeZahlenAbenteuer_profileCode";
+
+export function loadCachedProfileCode() {
+  try {
+    return localStorage.getItem(PROFILE_CODE_KEY);
+  } catch {
+    return null;
+  }
+}
+export function cacheProfileCode(code) {
+  try {
+    localStorage.setItem(PROFILE_CODE_KEY, code);
+  } catch {
+    // Kein lokaler Speicher verfügbar – der Code muss dann bei jedem
+    // Start erneut eingegeben werden, der Cloud-Fortschritt bleibt aber sicher.
+  }
+}
+export function clearCachedProfileCode() {
+  try {
+    localStorage.removeItem(PROFILE_CODE_KEY);
+  } catch {
+    // ignorieren
+  }
 }
 
 /* Profil-Code: ein Pokémon-Name (nur Buchstaben, damit er sich leicht
@@ -62,8 +97,54 @@ export async function loadProfileFromCloud(code) {
     const { db, doc, getDoc } = await dbP;
     const snap = await getDoc(doc(db, "saves", code));
     return snap.exists() ? snap.data() : null;
-  } catch {
+  } catch (err) {
+    // Sichtbar loggen statt still zu verschlucken – ein Fehler (z. B.
+    // blockierende Firestore-Regeln, kein Netzwerk) sieht sonst identisch
+    // aus wie "Code existiert nicht" und führt zu irreführenden Meldungen.
+    console.error("[cloud] Laden fehlgeschlagen:", err);
     return null;
+  }
+}
+
+/* Wie loadProfileFromCloud, unterscheidet aber ausdrücklich "existiert
+   nicht" von "Prüfung fehlgeschlagen" (z. B. Firestore-Regeln blockieren
+   den Zugriff, kein Netzwerk) – wichtig für eine ehrliche Rückmeldung im
+   ProfilePicker statt der irreführenden "Code existiert nicht"-Meldung
+   bei einem eigentlich vorhandenen Code. */
+export async function checkProfileCodeExists(code) {
+  const dbP = getDb();
+  if (!dbP || !code) return { exists: false, error: null };
+  try {
+    const { db, doc, getDoc } = await dbP;
+    const snap = await getDoc(doc(db, "saves", code));
+    return { exists: snap.exists(), error: null };
+  } catch (err) {
+    console.error("[cloud] Code-Prüfung fehlgeschlagen:", err);
+    return { exists: false, error: err };
+  }
+}
+
+/* Löscht den Spielstand eines Profils unwiderruflich aus der Cloud.
+   Gibt true zurück, wenn es (soweit feststellbar) geklappt hat. */
+export async function deleteProfileFromCloud(code) {
+  // Verhindert, dass ein noch ausstehender entprellter Schreibvorgang das
+  // gerade gelöschte Dokument kurz danach wieder anlegt.
+  if (pendingWrite && pendingWrite.code === code) {
+    pendingWrite = null;
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+  }
+  const dbP = getDb();
+  if (!dbP || !code) return false;
+  try {
+    const { db, doc, deleteDoc } = await dbP;
+    await deleteDoc(doc(db, "saves", code));
+    return true;
+  } catch (err) {
+    console.error("[cloud] Löschen fehlgeschlagen:", err);
+    return false;
   }
 }
 

@@ -4,29 +4,17 @@ import { DEFAULT_SKILLS } from "./data/skills";
 import { getUnlockedGenerations, totalDexAcross } from "./logic/generations";
 import { loadSave, saveSave, createInitialSave } from "./storage";
 import { logFailedSprite } from "./debug";
-import { isCloudAvailable, loadProfileFromCloud } from "./cloud";
+import {
+  isCloudAvailable,
+  loadProfileFromCloud,
+  checkProfileCodeExists,
+  loadCachedProfileCode,
+  cacheProfileCode,
+} from "./cloud";
 import { PixelPanel, PokeballIcon } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
 import ProfilePicker from "./components/ProfilePicker";
 import GameScreen from "./GameScreen";
-
-const PROFILE_CODE_KEY = "pokeZahlenAbenteuer_profileCode";
-
-function loadCachedProfileCode() {
-  try {
-    return localStorage.getItem(PROFILE_CODE_KEY);
-  } catch {
-    return null;
-  }
-}
-function cacheProfileCode(code) {
-  try {
-    localStorage.setItem(PROFILE_CODE_KEY, code);
-  } catch {
-    // Kein lokaler Speicher verfügbar – der Code muss dann bei jedem
-    // Start erneut eingegeben werden, der Cloud-Fortschritt bleibt aber sicher.
-  }
-}
 
 /* Beim Erststart (kein Save) wird nur Gen 1 vorgeladen; bei einem
    bestehenden Save nur die darin bereits freigeschalteten Generationen –
@@ -77,6 +65,14 @@ export default function PokemonZahlenAbenteuer() {
 
   function handleProfileSelected(code) {
     cacheProfileCode(code);
+    // Sofort (synchron, im selben Batch wie setProfileCode) auf "lädt noch"
+    // setzen – sonst gibt es einen Zwischen-Render, in dem needsProfilePicker
+    // schon false ist, resolvingSave aber noch den alten Wert hat (wird erst
+    // im untenstehenden Effect gesetzt, der erst NACH diesem Render läuft).
+    // In genau diesem Fenster würde der Sprite-Vorlade-Effect unten mit
+    // resolvedSave=null lospreloaden und sich danach nicht mehr korrigieren,
+    // sobald der echte Cloud-Spielstand eintrifft ("Ladevorgang hängt").
+    setResolvingSave(true);
     setProfileCode(code);
   }
 
@@ -230,6 +226,7 @@ export default function PokemonZahlenAbenteuer() {
 
 async function loadProfileFromCloudExists(code) {
   if (!isCloudAvailable()) return null;
-  const save = await loadProfileFromCloud(code);
-  return save != null;
+  const { exists, error } = await checkProfileCodeExists(code);
+  if (error) return null; // konnte nicht geprüft werden (z. B. Regeln/Netzwerk) – nicht mit "existiert nicht" verwechseln
+  return exists;
 }

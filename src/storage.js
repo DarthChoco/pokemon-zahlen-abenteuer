@@ -48,32 +48,6 @@ export function clearSave() {
   }
 }
 
-/* Manueller Speicherstand-Code als Absicherung gegen Browser, die
-   localStorage nicht zuverlässig behalten (z. B. manche Kindermodus-
-   Browser, die den Speicher beim Schließen der App leeren). Der Code
-   wird aus dem AKTUELLEN, im React-State gehaltenen Spielstand erzeugt,
-   nicht aus localStorage – funktioniert also auch, wenn das Speichern
-   dorthin gerade fehlschlägt. */
-export function encodeSaveCode(state) {
-  try {
-    const json = JSON.stringify({ ...state, schemaVersion: 3 });
-    return btoa(unescape(encodeURIComponent(json)));
-  } catch {
-    return null;
-  }
-}
-
-export function decodeSaveCode(code) {
-  try {
-    const json = decodeURIComponent(escape(atob(code.trim())));
-    const parsed = JSON.parse(json);
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.caughtDex)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 /* Legt einen frischen Spielstand an, direkt nach Abschluss des
    Einrichtungs-Assistenten. */
 export function createInitialSave(selectedSkillIds, fastAnswerSeconds = FAST_ANSWER_DEFAULT_SECONDS) {

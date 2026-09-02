@@ -14,9 +14,9 @@ import { SKILLS_BY_ID } from "./data/skills";
 import { genQuestionForSkill, genOptionsForQuestion, randInt } from "./logic/questionGenerators";
 import { buildRegionSkillPlan, pickSkillForRegion } from "./logic/regionConfig";
 import { remainingPool, regionTotal, regionCaughtCount } from "./logic/pokemonPool";
-import { loadSave, saveSave, clearSave, encodeSaveCode, decodeSaveCode } from "./storage";
+import { loadSave, saveSave, clearSave } from "./storage";
 import { loadFailedSprites, clearFailedSprites } from "./debug";
-import { saveProfileToCloud } from "./cloud";
+import { saveProfileToCloud, deleteProfileFromCloud, clearCachedProfileCode } from "./cloud";
 import { PixelPanel, PokeballIcon, PokemonSprite, RegionTile } from "./components/PixelUI";
 import SkillSettings from "./components/SkillSettings";
 
@@ -119,16 +119,31 @@ export default function GameScreen({ profileCode }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  // Speicherstand-Sicherung: manueller Code als Absicherung für Browser
-  // (z. B. manche Kindermodus-Browser), die localStorage nicht zuverlässig
-  // behalten. saveOk wird nach jedem Speicherversuch aktualisiert (siehe
-  // Save-Effect unten) und blendet bei Fehlschlag einen Hinweis ein.
+  // saveOk wird nach jedem Speicherversuch aktualisiert (siehe Save-Effect
+  // unten) und blendet bei Fehlschlag einen Hinweis ein. showSaveCodePanel
+  // zeigt Profil-Code sowie Profil wechseln/löschen (Firebase-Cloud-Sync
+  // übernimmt die eigentliche Sicherung, kein manueller Text-Code mehr nötig).
   const [saveOk, setSaveOk] = useState(true);
   const [showSaveCodePanel, setShowSaveCodePanel] = useState(false);
-  const [importCodeInput, setImportCodeInput] = useState("");
-  const [importError, setImportError] = useState(false);
-  const [importVersion, setImportVersion] = useState(0);
-  const [codeCopied, setCodeCopied] = useState(false);
+  const [showDeleteProfileConfirm, setShowDeleteProfileConfirm] = useState(false);
+  const [deletingProfile, setDeletingProfile] = useState(false);
+
+  // Zurück zum Profil-Auswahl-Bildschirm wechseln, ohne Daten zu löschen –
+  // z. B. wenn sich am selben Gerät ein anderes Kind anmelden will.
+  function switchProfile() {
+    clearCachedProfileCode();
+    window.location.reload();
+  }
+
+  // Profil unwiderruflich löschen: Cloud-Dokument, lokaler Spielstand UND
+  // der lokal gemerkte Code – danach landet man wieder beim Profil-Bildschirm.
+  async function deleteProfile() {
+    setDeletingProfile(true);
+    if (profileCode) await deleteProfileFromCloud(profileCode);
+    clearSave();
+    clearCachedProfileCode();
+    window.location.reload();
+  }
 
   const [debugMode, setDebugMode] = useState(loadDebugMode);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -273,40 +288,14 @@ export default function GameScreen({ profileCode }) {
     profileCode,
   ]);
 
-  function applyImportedSave(decoded) {
-    setActiveGenerationId(decoded.activeGenerationId ?? GENERATIONS[0].id);
-    setGenerationProgress(decoded.generationProgress ?? {});
-    setCaughtDex(new Set(decoded.caughtDex ?? []));
-    setScore(decoded.score ?? 0);
-    setFangChance(decoded.fangChance ?? FANG_START_CHANCE);
-    setTotalAnswered(decoded.totalAnswered ?? 0);
-    setTotalCorrect(decoded.totalCorrect ?? 0);
-    setSelectedSkillIds(decoded.selectedSkillIds ?? []);
-    setFastAnswerSeconds(decoded.fastAnswerSeconds ?? FAST_ANSWER_DEFAULT_SECONDS);
-    setImportVersion((v) => v + 1);
-    setImportCodeInput("");
-    setImportError(false);
-    setShowSaveCodePanel(false);
-  }
-
-  function handleImportCode() {
-    const decoded = decodeSaveCode(importCodeInput);
-    if (!decoded) {
-      setImportError(true);
-      return;
-    }
-    applyImportedSave(decoded);
-  }
-
-  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen), die
-  // aktive Generation wechselt, ODER ein Speicherstand importiert wird,
-  // sofort eine neue, passende Frage ziehen. Beim allerersten Rendern
-  // nicht auslösen, da die Startfrage schon per useState-Initializer
-  // steht. Das darf NICHT synchron im selben Handler wie die jeweiligen
-  // State-Updates ausgelöst werden (regionPlan hängt von Generation/
-  // Skills ab und wäre wegen React-Batching noch der alte Closure-Wert)
-  // – deshalb läuft das über diesen Effect, der erst nach dem Re-Render
-  // mit frischem regionPlan feuert.
+  // Wenn sich die Skill-Auswahl ändert (über die Einstellungen) ODER die
+  // aktive Generation wechselt, sofort eine neue, passende Frage ziehen.
+  // Beim allerersten Rendern nicht auslösen, da die Startfrage schon per
+  // useState-Initializer steht. Das darf NICHT synchron im selben Handler
+  // wie die jeweiligen State-Updates ausgelöst werden (regionPlan hängt
+  // von Generation/Skills ab und wäre wegen React-Batching noch der alte
+  // Closure-Wert) – deshalb läuft das über diesen Effect, der erst nach
+  // dem Re-Render mit frischem regionPlan feuert.
   const restartQuestionRanOnce = useRef(false);
   useEffect(() => {
     if (!restartQuestionRanOnce.current) {
@@ -315,7 +304,7 @@ export default function GameScreen({ profileCode }) {
     }
     startNextQuestion(activeRegionIdx);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSkillIds, activeGenerationId, importVersion]);
+  }, [selectedSkillIds, activeGenerationId]);
 
   // Welche Generationen sind bereits freigeschaltet (rein aus caughtDex
   // abgeleitet, siehe src/logic/generations.js)? Sobald ihre Anzahl wächst,
@@ -607,78 +596,63 @@ export default function GameScreen({ profileCode }) {
                 className="border-4 border-black p-2 mb-3 text-xs font-bold"
                 style={{ background: "#fff0ee", color: "#e3350d" }}
               >
-                ⚠️ Der Fortschritt konnte gerade nicht automatisch gespeichert werden (dieser Browser
-                behält localStorage evtl. nicht zuverlässig). Sichere unten regelmäßig den Code, damit
-                nichts verloren geht.
+                ⚠️ Der Fortschritt konnte gerade nicht lokal gespeichert werden (dieser Browser
+                behält localStorage evtl. nicht zuverlässig). {profileCode
+                  ? "Solange eine Internetverbindung besteht, sichert die Cloud-Synchronisation deinen Fortschritt trotzdem."
+                  : "Richte einen Profil-Code ein, damit dein Fortschritt zusätzlich in der Cloud gesichert wird."}
               </div>
             )}
-            <div className="mb-4">
-              <div className="font-extrabold text-sm mb-1" style={{ color: "#1a1a1a" }}>
-                Sichern
-              </div>
-              <div className="text-xs font-bold mb-2" style={{ color: "#555" }}>
-                Diesen Code kopieren und z. B. in einer Notiz aufbewahren. Auf einem anderen Gerät
-                (oder nach einem Neustart, falls hier nicht gespeichert wird) unten wieder einfügen.
-              </div>
-              <textarea
-                readOnly
-                value={encodeSaveCode(buildSaveState()) ?? ""}
-                onFocus={(e) => e.target.select()}
-                className="border-4 border-black w-full p-2 text-xs font-mono"
-                style={{ background: "#f4f4f4", color: "#1a1a1a", height: 80, resize: "none" }}
-              />
-              <button
-                onClick={async () => {
-                  const code = encodeSaveCode(buildSaveState());
-                  try {
-                    await navigator.clipboard.writeText(code ?? "");
-                    setCodeCopied(true);
-                    setTimeout(() => setCodeCopied(false), 2000);
-                  } catch {
-                    // Zwischenablage evtl. nicht verfügbar – Code steht trotzdem im Textfeld zum manuellen Kopieren.
-                  }
-                }}
-                className="mt-2 border-4 border-black px-3 py-2 font-bold text-xs"
-                style={{ background: "#ffcb05", color: "#1a1a1a" }}
-              >
-                {codeCopied ? "✅ Kopiert!" : "📋 Code kopieren"}
-              </button>
-            </div>
-            <div>
-              <div className="font-extrabold text-sm mb-1" style={{ color: "#1a1a1a" }}>
-                Wiederherstellen
-              </div>
-              <div className="text-xs font-bold mb-2" style={{ color: "#555" }}>
-                Achtung: überschreibt den aktuellen Fortschritt in diesem Browser.
-              </div>
-              <textarea
-                value={importCodeInput}
-                onChange={(e) => {
-                  setImportCodeInput(e.target.value);
-                  setImportError(false);
-                }}
-                placeholder="Code hier einfügen …"
-                className="border-4 border-black w-full p-2 text-xs font-mono"
-                style={{ background: "#f4f4f4", color: "#1a1a1a", height: 80, resize: "none" }}
-              />
-              {importError && (
-                <div className="text-xs font-bold mt-1" style={{ color: "#e3350d" }}>
-                  Dieser Code konnte nicht gelesen werden. Bitte vollständig kopieren.
+
+            {profileCode && (
+              <div className="mt-4 pt-3" style={{ borderTop: "2px solid #1a1a1a" }}>
+                <div className="font-extrabold text-sm mb-2" style={{ color: "#1a1a1a" }}>
+                  Profil
                 </div>
-              )}
-              <button
-                onClick={handleImportCode}
-                disabled={!importCodeInput.trim()}
-                className="mt-2 border-4 border-black px-3 py-2 font-extrabold text-xs"
-                style={{
-                  background: importCodeInput.trim() ? "#e3350d" : "#c9c9c9",
-                  color: "#ffffff",
-                  cursor: importCodeInput.trim() ? "pointer" : "not-allowed",
-                }}
-              >
-                Wiederherstellen
-              </button>
-            </div>
+                {!showDeleteProfileConfirm ? (
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      onClick={switchProfile}
+                      className="border-4 border-black px-3 py-2 font-bold text-xs"
+                      style={{ background: "#ffffff", color: "#1a1a1a" }}
+                    >
+                      🔄 Profil wechseln
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteProfileConfirm(true)}
+                      className="border-4 border-black px-3 py-2 font-bold text-xs"
+                      style={{ background: "#ffffff", color: "#e3350d" }}
+                    >
+                      🗑️ Profil löschen
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs font-bold mb-2" style={{ color: "#e3350d" }}>
+                      Wirklich Profil „{profileCode}" komplett löschen? Das entfernt den Fortschritt
+                      aus der Cloud UND von diesem Gerät – unwiderruflich.
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => setShowDeleteProfileConfirm(false)}
+                        disabled={deletingProfile}
+                        className="border-4 border-black px-3 py-2 font-bold text-xs"
+                        style={{ background: "#ffffff", color: "#1a1a1a" }}
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        onClick={deleteProfile}
+                        disabled={deletingProfile}
+                        className="border-4 border-black px-3 py-2 font-extrabold text-xs"
+                        style={{ background: "#e3350d", color: "#fff" }}
+                      >
+                        {deletingProfile ? "Löscht …" : "Ja, endgültig löschen"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </PixelPanel>
         )}
 
