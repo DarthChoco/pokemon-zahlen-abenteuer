@@ -2,7 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// GitHub Pages liefert dieses Projekt unter https://darthchoco.github.io/pokemon-zahlen-abenteuer/
+// aus – ein Unterpfad, kein Domain-Root. `base` sorgt dafür, dass alle von
+// Vite gebauten Asset-Pfade (JS/CSS/Manifest/Icons) diesen Unterpfad
+// korrekt mit einrechnen. Zur Laufzeit erzeugte, nicht von Vite verwaltete
+// Pfade (z. B. die Sprite-URLs in src/data/pokemon.js) müssen das separat
+// über import.meta.env.BASE_URL berücksichtigen.
+const BASE_PATH = "/pokemon-zahlen-abenteuer/";
+
 export default defineConfig({
+  base: BASE_PATH,
   plugins: [
     react(),
     VitePWA({
@@ -15,7 +24,8 @@ export default defineConfig({
         theme_color: "#e3350d",
         background_color: "#ffffff",
         display: "standalone",
-        start_url: "/",
+        start_url: BASE_PATH,
+        scope: BASE_PATH,
         icons: [
           { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
           { src: "pwa-512x512.png", sizes: "512x512", type: "image/png" },

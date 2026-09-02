@@ -203,9 +203,13 @@ export function pokemonName(dexNr) {
    heruntergeladen von PokeAPI/sprites – official-artwork, CC0-Repo,
    Bildinhalte © The Pokémon Company). Macht das Spiel unabhängig von
    PokeAPI/GitHub/jsDelivr-Erreichbarkeit; kein externer Request mehr
-   nötig, kein CDN-Ausfall wie bei den zuvor gemeldeten 400-Fehlern. */
+   nötig, kein CDN-Ausfall wie bei den zuvor gemeldeten 400-Fehlern.
+   import.meta.env.BASE_URL statt eines hart codierten "/" davor, da die
+   Seite unter GitHub Pages nicht vom Domain-Root, sondern einem
+   Unterpfad ausgeliefert wird (siehe base in vite.config.js) – lokal im
+   Dev-Server ist BASE_URL "/", auf GitHub Pages "/pokemon-zahlen-abenteuer/". */
 export function pokeSpriteUrl(dexNr) {
-  return `/sprites/${dexNr}.png`;
+  return `${import.meta.env.BASE_URL}sprites/${dexNr}.png`;
 }
 
 /* Ausweich-URL über den PokeAPI-Mirror auf jsDelivr, nur als Sicherheitsnetz
